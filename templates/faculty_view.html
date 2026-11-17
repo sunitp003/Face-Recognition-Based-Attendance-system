@@ -125,7 +125,6 @@
         <h2>Select Filters</h2>
         <form action="/faculty/view_attendance" method="POST">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <label><b>Select Batch:</b></label>
             <select name="batch" id="batchSelect" required>
                 <option value="" disabled selected>-- Select Batch --</option>
@@ -206,7 +205,6 @@
         </table>
         
         <form action="/faculty/download_attendance" method="POST">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="batch" value="{{ request.form.batch }}">
             <input type="hidden" name="branch" value="{{ request.form.branch }}">

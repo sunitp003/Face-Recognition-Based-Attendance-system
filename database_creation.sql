@@ -82,76 +82,43 @@ END;
 //
 DELIMITER ;
 
+-- Keep attendance_summary correct when faculty edits Present/Absent.
+DROP TRIGGER IF EXISTS update_attendance_summary_after_update;
+DELIMITER //
+CREATE TRIGGER update_attendance_summary_after_update
+AFTER UPDATE ON attendance
+FOR EACH ROW
+BEGIN
+    IF OLD.attendance_status <> NEW.attendance_status THEN
+        UPDATE attendance_summary
+        SET
+            attendance_percentage = CASE
+                WHEN total_classes > 0 THEN ROUND(
+                    GREATEST(
+                        0,
+                        present_count
+                        + (CASE WHEN NEW.attendance_status = 'Present' THEN 1 ELSE 0 END)
+                        - (CASE WHEN OLD.attendance_status = 'Present' THEN 1 ELSE 0 END)
+                    ) / total_classes * 100,
+                    2
+                )
+                ELSE 0.00
+            END,
+            present_count = GREATEST(
+                0,
+                present_count
+                + (CASE WHEN NEW.attendance_status = 'Present' THEN 1 ELSE 0 END)
+                - (CASE WHEN OLD.attendance_status = 'Present' THEN 1 ELSE 0 END)
+            )
+        WHERE student_ID = NEW.student_ID
+          AND batch = NEW.batch
+          AND branch = NEW.branch
+          AND subject_name = NEW.subject_name;
+    END IF;
+END//
+DELIMITER ;
 
--- Dynamic SQL Query to Generate Attendance Report
-SET @sql = NULL;
-SELECT GROUP_CONCAT(DISTINCT 
-        CONCAT('COALESCE(MAX(CASE WHEN attendance_date = ''', attendance_date, 
-               ''' THEN attendance_status END), "Absent") AS `', attendance_date, '`')
-       ) INTO @sql
-FROM attendance;
+-- Create an administrator manually with a unique username and private password:
+-- INSERT INTO admin_login (username, password) VALUES ('your_admin_username', 'your_private_password');
 
-
-SET @sql = CONCAT('SELECT a.student_ID, a.faculty_ID, a.batch, a.branch, a.subject_name, ', @sql, 
-                  ', s.attendance_percentage
-                  FROM attendance a
-                  JOIN attendance_summary s ON a.student_ID = s.student_ID
-                  GROUP BY a.student_ID, a.faculty_ID, a.batch, a.branch, a.subject_name, s.attendance_percentage');
-
-PREPARE stmt FROM @sql;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-
--- Sample Data Insert (Optional)
-INSERT INTO admin_login (username, password) VALUES ("Sunit", "sunit003");
-UPDATE admin_login SET username = "sunit" WHERE username = "Sunit";
-
--- Debugging Queries
-SELECT * FROM admin_login;
-SELECT * FROM attendance;
-SELECT * FROM faculty_login;
-SELECT * FROM student_login;
-SELECT * FROM attendance_summary;
-DESC student_login;
-
-INSERT INTO admin_login (username,password) 
-VALUES ('sunit','sunit003');
-
-INSERT INTO admin_login (username,password) 
-VALUES ('sunit','sunit003');
-
-USE `attendance_database1`;
-
--- Cleanup Commands (Use with Caution)
-DELETE FROM attendance WHERE student_ID = '342529';
-SET SQL_SAFE_UPDATES = 0;
-DELETE FROM attendance;
-SET SQL_SAFE_UPDATES = 1;
-
-SET SQL_SAFE_UPDATES = 0;
-DELETE FROM attendance_summary;
-SET SQL_SAFE_UPDATES = 1;
-
-SET SQL_SAFE_UPDATES = 0;
-DELETE FROM student_login;
-SET SQL_SAFE_UPDATES = 1;
-
-
-USE `attendance_database1`;
-
-
-DELETE FROM attendance WHERE student_ID = '342529';
-DELETE FROM attendance_summary WHERE student_ID = '342529';
-DELETE FROM student_login WHERE roll_no = '344135';
-DELETE FROM faculty_login WHERE faculty_id = 'faculty456';
-
--- Sample Faculty and Student Data
--- INSERT INTO faculty_login (faculty_name, faculty_id, department) VALUES ('Dr. Smith', 'faculty456', 'CSE');
--- INSERT INTO student_login (student_name, roll_no, branch, batch) VALUES ('John Doe', '2021311', 'CS1', '2017');
-
--- Sample Attendance Data
--- INSERT INTO attendance (student_ID, faculty_ID, batch, branch, attendance_date, attendance_status) VALUES
--- ('2021311', 'faculty456', '2017', 'CS1', '2025-03-21', 'Present'),
--- ('2021311', 'faculty456', '2017', 'CS1', '2025-03-22', 'Absent');
-
-SELECT * FROM attendance_summary;
+-- This schema file intentionally contains no sample-account inserts or DELETE statements.

@@ -1,274 +1,87 @@
-# import cv2
-# import os
+"""Optional Haar Cascade dataset-preparation helpers.
 
-# # def face_detect(path, roll, branch, batch, root):
-# #     """
-# #     Detects faces from images inside the student's roll number folder
-# #     and saves processed face images into the correct dataset structure.
-
-# #     Args:
-# #         path (str): Path to the roll number folder containing images.
-# #         roll (str): Student's roll number.
-# #         branch (str): Student's branch.
-# #         batch (str): Student's batch.
-# #         root (str): Root directory of the project.
-
-# #     Returns:
-# #         int: 1 if face detection is successful.
-# #     """
-# #     print("🔍 Detecting faces in:", path)
-
-# #     detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-
-# #     # Ensure the target folder exists for processed images
-# #     target_dir = os.path.join(root, "dataset", batch, branch, roll)
-# #     os.makedirs(target_dir, exist_ok=True)
-
-# #     images = os.listdir(path)
-# #     print("📂 Found images:", images)
-
-# #     temp = 0
-# #     for img_name in images:
-# #         img_path = os.path.join(path, img_name)
-
-# #         try:
-# #             image = cv2.imread(img_path)
-# #             if image is None:
-# #                 print(f"⚠️ Skipping invalid image: {img_path}")
-# #                 continue
-
-# #             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-# #             faces = detector.detectMultiScale(gray, 1.3, 5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
-
-# #             for x, y, w, h in faces:
-# #                 temp += 1
-# #                 face_img = gray[y:y+h, x:x+w]
-# #                 save_path = os.path.join(target_dir, f"{roll}_{temp}.jpg")
-# #                 cv2.imwrite(save_path, face_img)
-# #                 print(f"✅ Face detected and saved: {save_path}")
-
-# #         except Exception as e:
-# #             print(f"❌ Error processing {img_path}: {e}")
-# #             continue
-
-# #     return 1
-
-
-# import cv2
-# import os
-
-# def face_detect(path, roll, branch, batch, root):
-#     """
-#     Detects faces from images inside the student's roll number folder
-#     and saves processed face images into the correct dataset structure.
-
-#     Args:
-#         path (str): Path to the roll number folder containing images.
-#         roll (str): Student's roll number.
-#         branch (str): Student's branch.
-#         batch (str): Student's batch.
-#         root (str): Root directory of the project.
-
-#     Returns:
-#         int: 1 if face detection is successful.
-#     """
-#     print("🔍 Detecting faces in:", path)
-
-#     detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-
-#     # Ensure the target folder exists for processed images
-#     target_dir = os.path.join(root, "dataset", batch, branch, roll)
-#     os.makedirs(target_dir, exist_ok=True)
-
-#     # images = os.listdir(path)
-#     # print("📂 Found images:", images)
-
-#     # temp = 0
-#     # for img_name in images:
-#     #     # Skip non-image files
-#     #     if not img_name.lower().endswith(('.jpg', '.jpeg', '.png')):
-#     #         continue
-
-#     #     img_path = os.path.join(path, img_name)
-
-#     #     try:
-#     #         image = cv2.imread(img_path)
-#     #         if image is None:
-#     #             print(f"⚠️ Skipping invalid image: {img_path}")
-#     #             continue
-
-#     #         # Resize image for better face detection
-#     #         image = cv2.resize(image, (640, 480))
-#     #         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-#     #         faces = detector.detectMultiScale(gray, 1.3, 5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
-
-#     #         for x, y, w, h in faces:
-#     #             temp += 1
-#     #             face_img = gray[y:y+h, x:x+w]
-#     #             save_path = os.path.join(target_dir, f"{roll}_{temp}.jpg")
-#     #             cv2.imwrite(save_path, face_img)
-#     #             print(f"✅ Face detected and saved: {save_path}")
-
-#     #     except Exception as e:
-#     #         print(f"❌ Error processing {img_path}: {e}")
-#     #         continue
-
-
-
-
-#     images = os.listdir(path)
-#     print("📂 Found images:", images)
-
-#     temp = 0
-#     for img_name in images:
-#         if not img_name.lower().endswith(('.jpg', '.jpeg', '.png')):
-#             continue
-    
-#         img_path = os.path.join(path, img_name)
-    
-#         try:
-#             image = cv2.imread(img_path)
-#             if image is None:
-#                 print(f"⚠️ Skipping invalid image: {img_path}")
-#                 continue
-
-#             image = cv2.resize(image, (640, 480))
-#             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-#             # Adjust minNeighbors and minSize for better accuracy
-#             faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30), flags=cv2.CASCADE_SCALE_IMAGE)
-    
-#             for x, y, w, h in faces:
-#                 temp += 1
-#                 face_img = gray[y:y+h, x:x+w]
-#                 save_path = os.path.join(target_dir, f"{roll}_{temp}.jpg")
-#                 cv2.imwrite(save_path, face_img)
-#                 print(f"✅ Face detected and saved: {save_path}")
-    
-#         except Exception as e:
-#             print(f"❌ Error processing {img_path}: {e}")
-#             continue
-    
-#     return 1
-    
-
-
-
-import cv2
-import os
+The active LBPH training path reads student images from uploads/ directly.
+These helpers remain available for older workflows and use the same 200x200
+grayscale normalization as modelTrain.py.
+"""
 import hashlib
 import logging
+import os
+
+import cv2
 import numpy as np
 
-# Logging setup for better visibility of errors and skipped images
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+SUPPORTED_IMAGES = (".jpg", ".jpeg", ".png")
+FACE_SIZE = (200, 200)
 
-def face_detect(path, roll, branch, batch, root):
-    print(f"🔍 Detecting faces for: {roll}")
 
-    detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+def _detector():
+    detector = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+    if detector.empty():
+        raise RuntimeError("Could not load OpenCV Haar face detector")
+    return detector
 
-    target_dir = os.path.join(root, "dataset", batch, branch, roll)
-    os.makedirs(target_dir, exist_ok=True)
 
-    images = os.listdir(path)
-    print("📁 Total images found:", len(images))
-
-    temp = 0
-    processed_hashes = set()
-
-    for img_name in images:
-        if not img_name.lower().endswith(('.jpg', '.jpeg', '.png')):
-            continue
-
-        img_path = os.path.join(path, img_name)
-
-        image = cv2.imread(img_path)
-        if image is None:
-            logging.error(f"❌ Couldn't read image: {img_path}")
-            continue
-
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        # Detect faces
-        faces = detector.detectMultiScale(
-            gray, scaleFactor=1.1, minNeighbors=5, minSize=(100, 100),
-            flags=cv2.CASCADE_SCALE_IMAGE
-        )
-
-        if len(faces) == 0:
-            logging.warning(f"⚠️ No face detected in: {img_name}")
-            continue
-
-        # Select the largest face (best chance it's the main face)
-        largest_face = max(faces, key=lambda box: box[2] * box[3])
-        x, y, w, h = largest_face
-
-        # Add padding to avoid tight crops (optional)
-        padding = 20
-        x = max(0, x - padding)
-        y = max(0, y - padding)
-        w = min(image.shape[1] - x, w + 2 * padding)
-        h = min(image.shape[0] - y, h + 2 * padding)
-
-        face_img = gray[y:y + h, x:x + w]
-        face_img = cv2.resize(face_img, (150, 150))  # Standard size
-
-        # Use hash to avoid duplicates
-        face_hash = hashlib.md5(face_img.tobytes()).hexdigest()
-        if face_hash in processed_hashes:
-            logging.warning(f"⚠️ Duplicate face, skipping: {img_name}")
-            continue
-
-        processed_hashes.add(face_hash)
-
-        temp += 1
-        save_path = os.path.join(target_dir, f"{roll}_{temp}.jpg")
-        cv2.imwrite(save_path, face_img)
-        logging.info(f"✅ Saved: {save_path}")
-
-    print(f"✅ Done. {temp} faces saved to: {target_dir}")
-    return 1
-
-def process_image(imagePath, padding=30):
+def process_image(image_path, padding=30):
+    """Return one normalized face and its numeric roll number, if available."""
     try:
-        roll_no = extract_roll_no_from_path(imagePath)
-        if roll_no is None:
-            logging.warning(f"⚠️ Skipping: {imagePath} (No roll number found)")
+        roll_no = os.path.basename(os.path.dirname(image_path)).strip()
+        if not roll_no.isdigit():
             return None, None
 
-        Id = int(roll_no)
-        pilImage = Image.open(imagePath).convert("L")  # Convert image to grayscale
-        imageNp = np.array(pilImage, 'uint8')
+        image = cv2.imread(image_path)
+        if image is None:
+            return None, None
 
-        # Load Haar Cascade for face detection
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
+        faces = _detector().detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=6, minSize=(60, 60)
+        )
+        if len(faces) != 1:
+            return None, None
 
-        # Detect faces
-        faces = face_cascade.detectMultiScale(imageNp, scaleFactor=1.05, minNeighbors=3, minSize=(30, 30))
+        x, y, width, height = faces[0]
+        x1 = max(0, x - padding)
+        y1 = max(0, y - padding)
+        x2 = min(gray.shape[1], x + width + padding)
+        y2 = min(gray.shape[0], y + height + padding)
+        face = gray[y1:y2, x1:x2]
+        if face.size == 0:
+            return None, None
 
-        if len(faces) > 0:
-            # Use the first face detected (if multiple faces are found)
-            for (x, y, w, h) in faces:
-                # Ensure that padding doesn't cause the crop to go out of image bounds
-                x1 = max(x - padding, 0)
-                y1 = max(y - padding, 0)
-                x2 = min(x + w + padding, imageNp.shape[1])
-                y2 = min(y + h + padding, imageNp.shape[0])
-
-                # Crop the face with added padding
-                face_cropped = imageNp[y1:y2, x1:x2]
-
-                # Resize the cropped face to a fixed size (200x200) for consistency
-                face_resized = cv2.resize(face_cropped, (200, 200))
-
-                return face_resized, Id
-
-        logging.warning(f"⚠️ No face detected in: {imagePath}")
-        return None, None
-    except Exception as e:
-        logging.error(f"❌ Error processing {imagePath}: {e}")
+        face = cv2.resize(face, FACE_SIZE, interpolation=cv2.INTER_AREA)
+        return cv2.equalizeHist(face), int(roll_no)
+    except (OSError, ValueError, cv2.error) as exc:
+        logging.warning("Could not process image %s: %s", image_path, exc)
         return None, None
 
-# Make sure to debug each step of your pipeline, check the roll number extraction, and make sure the dataset has proper face images.
+
+def face_detect(path, roll, branch, batch, root):
+    """Prepare unique face crops for one student; return 1 only if any are saved."""
+    if not os.path.isdir(path):
+        return 0
+
+    target_dir = os.path.join(root, "dataset", str(batch), str(branch), str(roll))
+    os.makedirs(target_dir, exist_ok=True)
+    seen = set()
+    saved = 0
+
+    for filename in sorted(os.listdir(path)):
+        if not filename.lower().endswith(SUPPORTED_IMAGES):
+            continue
+        face, _ = process_image(os.path.join(path, filename))
+        if face is None:
+            continue
+
+        digest = hashlib.sha256(face.tobytes()).hexdigest()
+        if digest in seen:
+            continue
+        seen.add(digest)
+        output_path = os.path.join(target_dir, f"{roll}_{saved + 1}.jpg")
+        if cv2.imwrite(output_path, face):
+            saved += 1
+
+    return 1 if saved else 0

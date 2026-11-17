@@ -1,121 +1,138 @@
+"""Conservative multi-frame attendance recognition using YuNet + SFace."""
+import json
 import os
-import cv2
-import numpy as np
+from collections import defaultdict
 from datetime import datetime
 
+import cv2
+import numpy as np
+
+DETECTOR_RELATIVE_PATH = os.path.join("models", "face_detection_yunet_2023mar.onnx")
+RECOGNIZER_RELATIVE_PATH = os.path.join("models", "face_recognition_sface_2021dec.onnx")
+DEFAULT_COSINE_THRESHOLD = 0.45
+DEFAULT_MIN_MARGIN = 0.06
+DEFAULT_MIN_VOTES = 3
+FRAME_SAMPLE_INTERVAL = 5
+
+
+def _load_models(root):
+    detector_path = os.path.join(root, DETECTOR_RELATIVE_PATH)
+    recognizer_path = os.path.join(root, RECOGNIZER_RELATIVE_PATH)
+    if not os.path.isfile(detector_path) or not os.path.isfile(recognizer_path):
+        raise FileNotFoundError("Run 'python download_models.py' to fetch YuNet and SFace.")
+    detector = cv2.FaceDetectorYN.create(
+        detector_path, "", (320, 320), 0.85, 0.3, 5000
+    )
+    recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
+    return detector, recognizer
+
+
+def _normalized_feature(image, face_row, recognizer):
+    aligned = recognizer.alignCrop(image, face_row)
+    feature = np.asarray(recognizer.feature(aligned), dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(feature))
+    if not np.isfinite(norm) or norm == 0:
+        return None
+    return feature / norm
+
+
+def _best_identity(feature, gallery):
+    scores = []
+    for student_id, samples in gallery.items():
+        vectors = np.asarray(samples, dtype=np.float32)
+        similarities = vectors @ feature
+        # Average the best few enrollment samples to reduce one-photo outliers.
+        top = np.sort(similarities)[-min(3, len(similarities)):]
+        scores.append((float(np.mean(top)), str(student_id)))
+    scores.sort(reverse=True)
+    if not scores:
+        return None, 0.0, 0.0
+    best_score, best_id = scores[0]
+    second_score = scores[1][0] if len(scores) > 1 else -1.0
+    return best_id, best_score, best_score - second_score
+
+
 def recognize_attendance(root, video_path, branch, batch):
-    """
-    Recognizes faces from a given video using the trained model.
-
-    Args:
-        root (str): Root directory of the project.
-        video_path (str): Path to the recorded attendance video.
-        branch (str): Student's branch.
-        batch (str): Student's batch.
-
-    Returns:
-        list: List of recognized student IDs.
-    """
-
-    # Path to the trained model
-    model_path = os.path.join(root, "models", batch, branch, "trainer.yml")
-
-    # Check if model exists
-    if not os.path.exists(model_path):
-        print(f"❌ Model file not found: {model_path}")
+    model_dir = os.path.join(root, "models", str(batch), str(branch))
+    gallery_path = os.path.join(model_dir, "face_embeddings.json")
+    if not os.path.isfile(gallery_path) or not os.path.isfile(video_path):
+        print("SFace gallery or video is missing.")
         return []
 
-    # Load the model
     try:
-        recognizer = cv2.face.LBPHFaceRecognizer_create()
-        recognizer.read(model_path)
-        print("✅ Model loaded successfully!")
-    except Exception as e:
-        print(f"⚠️ Error loading model: {e}")
+        with open(gallery_path, "r", encoding="utf-8") as file:
+            saved = json.load(file)
+        if saved.get("model") != "OpenCV-SFace" or saved.get("version") != 1:
+            raise ValueError("Unsupported face gallery format; retrain the model.")
+        gallery = {
+            str(student_id): np.asarray(vectors, dtype=np.float32)
+            for student_id, vectors in saved.get("students", {}).items()
+        }
+        if not gallery:
+            return []
+        detector, recognizer = _load_models(root)
+    except Exception as exc:
+        print(f"Unable to load SFace gallery/models: {exc}")
         return []
 
-    # Load face detection classifier
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-
-    # Check if video file exists
-    if not os.path.exists(video_path):
-        print(f"❌ Video file not found: {video_path}")
-        return []
-
-    # Open video
+    threshold = float(os.getenv("SFACE_COSINE_THRESHOLD", DEFAULT_COSINE_THRESHOLD))
+    min_margin = float(os.getenv("SFACE_MIN_MARGIN", DEFAULT_MIN_MARGIN))
+    min_votes = int(os.getenv("SFACE_MIN_VOTES", DEFAULT_MIN_VOTES))
     cap = cv2.VideoCapture(video_path)
-
     if not cap.isOpened():
-        print(f"❌ Failed to open video file: {video_path}")
+        print(f"Unable to open video: {video_path}")
         return []
 
-    # Get the current date for folder structure
-    current_date = datetime.now().strftime("%Y-%m-%d")
-    
-    # Set up the base folder path for storing recognized and detected faces
-    base_folder = os.path.join(root, "detected_faces", batch, branch, current_date)
-    
-    # Create necessary directories if they do not exist
-    detected_folder = os.path.join(base_folder, "detected")
-    recognized_folder = os.path.join(base_folder, "recognized")
-    
-    os.makedirs(detected_folder, exist_ok=True)
-    os.makedirs(recognized_folder, exist_ok=True)
+    votes = defaultdict(list)
+    frame_index = 0
+    today = datetime.now().strftime("%Y-%m-%d")
+    review_dir = os.path.join(root, "detected_faces", str(batch), str(branch), today, "review")
+    os.makedirs(review_dir, exist_ok=True)
 
-    # Variables for face recognition
-    minW = 0.1 * cap.get(3)
-    minH = 0.1 * cap.get(4)
-    recognized_faces = set()
-    recognized_this_session = set()  # Prevent duplicate recognition
-    frame_count = 0
-    THRESHOLD = 85  # Adjusted threshold for better accuracy (lower for stricter matches)
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            frame_index += 1
+            if frame_index % FRAME_SAMPLE_INTERVAL:
+                continue
+            height, width = frame.shape[:2]
+            detector.setInputSize((width, height))
+            _, faces = detector.detect(frame)
+            if faces is None:
+                continue
+            seen_in_frame = set()
+            for face_index, face_row in enumerate(faces):
+                try:
+                    feature = _normalized_feature(frame, face_row, recognizer)
+                    if feature is None:
+                        continue
+                    student_id, score, margin = _best_identity(feature, gallery)
+                except cv2.error:
+                    continue
+                if student_id is None or score < threshold or margin < min_margin:
+                    review_path = os.path.join(
+                        review_dir, f"frame_{frame_index}_face_{face_index}.jpg"
+                    )
+                    x, y, w, h = np.asarray(face_row[:4], dtype=int)
+                    crop = frame[max(0, y):max(0, y + h), max(0, x):max(0, x + w)]
+                    if crop.size:
+                        cv2.imwrite(review_path, crop)
+                    continue
+                if student_id not in seen_in_frame:
+                    votes[student_id].append(score)
+                    seen_in_frame.add(student_id)
+    finally:
+        cap.release()
 
-    while True:
-        success, img = cap.read()
-        if not success:
-            print(f"⚠️ Video ended after {frame_count} frames.")
-            break
-
-        frame_count += 1
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # Detect faces in the image
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=6, minSize=(50, 50))
-
-        for x, y, w, h in faces:
-            # Crop face region from the grayscale image
-            face_gray = gray[y:y+h, x:x+w]
-
-            # Resize the face region to the fixed size used during training
-            face_resized = cv2.resize(face_gray, (200, 200))
-
-            # Predict the ID from the trained model
-            try:
-                Id, conf = recognizer.predict(face_resized)
-
-                # Save recognized face with ID if confidence is below the threshold
-                if conf < THRESHOLD and Id not in recognized_this_session:
-                    recognized_faces.add(str(Id))  
-                    recognized_this_session.add(Id)  # Prevent duplicate session entries
-                    
-                    # Save the recognized face in the 'recognized' folder
-                    face_filename = os.path.join(recognized_folder, f"recognized_{frame_count}_{Id}.jpg")
-                    cv2.imwrite(face_filename, face_resized)
-                    print(f"🎯 Recognized Student ID: {Id}, Confidence: {round(conf, 2)} ✅ Accepted")
-                else:
-                    # Save the face even if not recognized (for later review)
-                    face_filename = os.path.join(detected_folder, f"detected_{frame_count}.jpg")
-                    cv2.imwrite(face_filename, face_resized)
-                    print(f"⚠️ Ignored ID: {Id}, Confidence: {round(conf, 2)} (Above {THRESHOLD})")
-
-            except Exception as e:
-                print(f"⚠️ Error during prediction: {e}")
-
-        # Reset the session after every 50 frames to avoid duplicates over long videos
-        if frame_count % 50 == 0:
-            recognized_this_session.clear()
-
-    cap.release()
-
-    # Return the list of recognized student IDs
-    return list(recognized_faces)
+    accepted = []
+    for student_id, scores in votes.items():
+        median_score = float(np.median(scores))
+        if len(scores) >= min_votes and median_score >= threshold:
+            accepted.append(student_id)
+        print(
+            f"Candidate {student_id}: votes={len(scores)}, "
+            f"median_cosine={median_score:.3f}"
+        )
+    return sorted(accepted)

@@ -2,11 +2,11 @@ Flask
 flask_ngrok
 Flask-Session
 flask_login
-opencv-python
-opencv-contrib-python
-numpy
+opencv-contrib-python>=4.10.0.84,<5
+numpy<2
 pandas
 Pillow
 mysqlclient
 PyMySQL
 openpyxl
+python-dotenv>=1.0,<2

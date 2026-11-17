@@ -1,154 +1,118 @@
-import cv2
+"""Build a student face-embedding gallery with OpenCV YuNet + SFace.
+
+Unlike the legacy LBPH model, SFace produces normalized embeddings and compares
+them with cosine similarity. Every enrollment photo must contain exactly one face.
+"""
+import json
 import os
+
+import cv2
 import numpy as np
-from PIL import Image
-import re
 
-# Extract roll number from image path (to label images correctly)
-def extract_roll_no_from_path(imagePath):
-    """
-    Extracts the first numeric roll number (6 digits) from the given image path.
-    """
-    match = re.search(r'\b\d{6}\b', imagePath)  # Extract only 6-digit student roll numbers
-    return match.group() if match else None
-
-# Process image for face and eye detection
-def process_image(imagePath, padding=60):  # Increased padding from 30 to 60
-    roll_no = extract_roll_no_from_path(imagePath)
-    if roll_no is None:
-        print(f"⚠️ Skipping: {imagePath} (No roll number found)")
-        return None, None
-
-    try:
-        Id = int(roll_no)
-        pilImage = Image.open(imagePath).convert("L")  # Convert image to grayscale
-        imageNp = np.array(pilImage, 'uint8')
-
-        # Load Haar Cascade for face and eye detection
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-        eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
-
-        # Detect faces in the image
-        faces = face_cascade.detectMultiScale(imageNp, scaleFactor=1.05, minNeighbors=3, minSize=(30, 30))
-
-        if len(faces) > 0:
-            # Use the first detected face (if multiple faces are found)
-            for (x, y, w, h) in faces:
-                # Crop the face region
-                face_cropped = imageNp[y:y+h, x:x+w]
-
-                # Detect eyes in the face region
-                eyes = eye_cascade.detectMultiScale(face_cropped)
-
-                if len(eyes) > 0:
-                    # Use the first detected eye to define the region around the face
-                    ex, ey, ew, eh = eyes[0]
-
-                    # Adjust the crop to include eyes and some padding around the face
-                    x1 = max(x - padding, 0)
-                    y1 = max(y - padding, 0)
-                    x2 = min(x + w + padding, imageNp.shape[1])
-                    y2 = min(y + h + padding, imageNp.shape[0])
-
-                    # Crop the region around the face and eyes with more area
-                    face_resized = imageNp[y1:y2, x1:x2]
-
-                    # Resize the cropped face to a fixed size (200x200) for consistency
-                    face_resized = cv2.resize(face_resized, (200, 200))
-                    
-                    return face_resized, Id
-
-        print(f"⚠️ No face detected in: {imagePath}")
-        return None, None
-
-    except Exception as e:
-        print(f"❌ Error processing {imagePath}: {e}")
-        return None, None
+FACE_DETECTOR_PATH = os.path.join("models", "face_detection_yunet_2023mar.onnx")
+FACE_RECOGNIZER_PATH = os.path.join("models", "face_recognition_sface_2021dec.onnx")
+MIN_IMAGES_PER_STUDENT = 3
 
 
-
-# Get all images and labels (face data and roll numbers) from a directory
-def getImagesAndLabels(path):
-    """
-    Extracts face data and numeric IDs from images inside student folders.
-    """
-    if not os.path.exists(path):
-        print(f"❌ Dataset path '{path}' does not exist!")
-        return [], []
-
-    imagePaths = [os.path.join(root, file) for root, _, files in os.walk(path) for file in files if file.lower().endswith((".jpg", ".png", ".jpeg"))]
-
-    if len(imagePaths) == 0:
-        print(f"⚠️ No images found in '{path}'. Ensure dataset is properly uploaded!")
-        return [], []
-
-    print(f"🔍 Found {len(imagePaths)} images in '{path}'")
-
-    faces, Ids = [], []
-    for imagePath in imagePaths:
-        face, Id = process_image(imagePath)
-        if face is not None and Id is not None:
-            faces.append(face)
-            Ids.append(Id)
-
-    print(f"📋 Unique IDs trained: {sorted(set(Ids))}")
-    return faces, Ids
+def _load_models(root):
+    detector_path = os.path.join(root, FACE_DETECTOR_PATH)
+    recognizer_path = os.path.join(root, FACE_RECOGNIZER_PATH)
+    missing = [p for p in (detector_path, recognizer_path) if not os.path.isfile(p)]
+    if missing:
+        raise FileNotFoundError(
+            "Face models missing. Run 'python download_models.py'. Missing: "
+            + ", ".join(missing)
+        )
+    detector = cv2.FaceDetectorYN.create(
+        detector_path, "", (320, 320), 0.85, 0.3, 5000
+    )
+    recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
+    return detector, recognizer
 
 
-# Example usage for training the model
+def _extract_embedding(image, detector, recognizer):
+    if image is None or image.size == 0:
+        return None
+    height, width = image.shape[:2]
+    detector.setInputSize((width, height))
+    _, faces = detector.detect(image)
+    if faces is None or len(faces) != 1:
+        return None
+    aligned = recognizer.alignCrop(image, faces[0])
+    feature = recognizer.feature(aligned)
+    vector = np.asarray(feature, dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(vector))
+    if not np.isfinite(norm) or norm == 0:
+        return None
+    return (vector / norm).tolist()
+
+
+def getImagesAndLabels(path, detector, recognizer):
+    """Return a mapping of exact roll numbers to normalized face embeddings."""
+    gallery = {}
+    if not os.path.isdir(path):
+        return gallery
+
+    for student_dir in sorted(os.scandir(path), key=lambda item: item.name):
+        if not student_dir.is_dir():
+            continue
+        roll_no = student_dir.name.strip()
+        if not roll_no:
+            continue
+        embeddings = []
+        for filename in sorted(os.listdir(student_dir.path)):
+            if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            image = cv2.imread(os.path.join(student_dir.path, filename))
+            embedding = _extract_embedding(image, detector, recognizer)
+            if embedding is not None:
+                embeddings.append(embedding)
+        if len(embeddings) >= MIN_IMAGES_PER_STUDENT:
+            gallery[roll_no] = embeddings
+        else:
+            print(
+                f"Skipping {roll_no}: {len(embeddings)} valid single-face images; "
+                f"need at least {MIN_IMAGES_PER_STUDENT}."
+            )
+    return gallery
+
+
 def TrainImages(root, batch, branch):
-    uploads_path = os.path.join(root, "uploads", batch, branch)
-    dataset_path = os.path.join(root, "dataset", batch, branch)
-
-    if not os.path.exists(uploads_path):
-        print(f"❌ No images found in '{uploads_path}'. Ensure dataset is properly uploaded!")
+    uploads_path = os.path.join(root, "uploads", str(batch), str(branch))
+    if not os.path.isdir(uploads_path):
+        print(f"Training folder not found: {uploads_path}")
         return 0
-
-    print(f"🛠 Training data path: {uploads_path}")
-
-    # Ensure dataset directory exists
-    os.makedirs(dataset_path, exist_ok=True)
-
     try:
-        recognizer = cv2.face.LBPHFaceRecognizer_create()  # Older OpenCV versions
-    except AttributeError:
-        recognizer = cv2.face_LBPHFaceRecognizer.create()  # Newer OpenCV versions
-
-    faces, Ids = getImagesAndLabels(uploads_path)
-
-    if len(faces) > 0 and len(Ids) > 0:
-        print(f"🟢 Processing {len(faces)} images for {len(set(Ids))} students...")
-
-        # Save processed images in dataset
-        for i, (face, Id) in enumerate(zip(faces, Ids), start=1):
-            student_folder = os.path.join(dataset_path, str(Id))
-            os.makedirs(student_folder, exist_ok=True)
-            face_image_path = os.path.join(student_folder, f"{Id}_{i}.jpg")
-            cv2.imwrite(face_image_path, face)
-            print(f"✅ Processed face saved: {face_image_path}")
-
-        # Train the recognizer
-        recognizer.train(faces, np.array(Ids))
-
-        # Save trained model
-        model_path = os.path.join(root, "models", batch, branch)
-        os.makedirs(model_path, exist_ok=True)
-        recognizer.save(os.path.join(model_path, "trainer.yml"))
-
-        print(f"✅ Model trained successfully! Saved to: {model_path}/trainer.yml")
+        detector, recognizer = _load_models(root)
+        gallery = getImagesAndLabels(uploads_path, detector, recognizer)
+        if not gallery:
+            print("No students have enough valid enrollment images.")
+            return 0
+        model_dir = os.path.join(root, "models", str(batch), str(branch))
+        os.makedirs(model_dir, exist_ok=True)
+        output_path = os.path.join(model_dir, "face_embeddings.json")
+        temporary_path = output_path + ".tmp"
+        with open(temporary_path, "w", encoding="utf-8") as file:
+            json.dump(
+                {"model": "OpenCV-SFace", "version": 1, "students": gallery},
+                file,
+                separators=(",", ":"),
+            )
+        os.replace(temporary_path, output_path)
+        print(
+            f"Created SFace gallery for {len(gallery)} students at {output_path}"
+        )
         return 1
-    else:
-        print("❌ No valid training data found. Ensure the dataset contains properly labeled images.")
+    except Exception as exc:
+        print(f"Training failed: {exc}")
         return 0
 
-# Example usage
-if __name__ == "__main__":
-    APP_ROOT = "C:/Users/sunit/OneDrive/Desktop/Project_Final_Year/Project_deployment"
-    batch = "2025"
-    branch = "ce"
 
-    result = TrainImages(APP_ROOT, batch, branch)
-    if result == 1:
-        print("🎯 Training completed successfully.")
-    else:
-        print("⚠️ Training failed. Check the dataset for issues.")
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Build an SFace attendance gallery")
+    parser.add_argument("root")
+    parser.add_argument("batch")
+    parser.add_argument("branch")
+    args = parser.parse_args()
+    raise SystemExit(0 if TrainImages(args.root, args.batch, args.branch) else 1)

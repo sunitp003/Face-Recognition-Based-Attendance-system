@@ -1,0 +1,21 @@
+# Local secrets and Python environments
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Downloaded model weights and generated biometric galleries
+models/*.onnx
+models/*/*/face_embeddings.json
+models/*/*/face_embeddings.json.tmp
+
+# Uploaded biometric data, classroom videos, and generated review images
+uploads/
+uploads*/
+zip_uploads/
+Zip_uploads/
+attendance/
+detected_faces/
+dataset/
+Uploads/

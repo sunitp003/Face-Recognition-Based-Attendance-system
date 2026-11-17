@@ -176,13 +176,13 @@ def set_response_headers(response):
 @role_required("Admin")
 def admin():
     if request.method == "POST":
-        batch = request.values.get("batch").strip()
-        branch = request.values.get("branch").strip()
-        if batch and branch:
+        batch = request.values.get("batch", "").strip()
+        branch = request.values.get("branch", "").strip()
+        if batch and branch and re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) and re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
             ret = modelTrain.TrainImages(APP_ROOT, batch, branch)
-            msg = "Model Trained Successfully" if ret == 1 else "No images found!"
+            msg = "Model Trained Successfully" if ret == 1 else "Training failed: add at least 3 valid face images per student."
         else:
-            msg = "Please provide batch and branch."
+            msg = "Please provide a valid batch and branch."
         return render_template("dashB_admin.html", msg=msg)
     return render_template("dashB_admin.html")
 

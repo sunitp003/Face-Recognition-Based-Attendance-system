@@ -133,6 +133,7 @@
         
         <h2>View Attendance</h2>
         <form action="/studentDashboard" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <input type="text" name="roll" placeholder="Roll Number" required>
             <select name="branch" id="branch" required>
                 <option value="">-- Select Branch --</option>

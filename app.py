@@ -43,7 +43,13 @@ def role_required(*allowed_roles):
 
 
 # Database connection
-conn = MySQLdb.connect(\n    host=os.environ.get("DB_HOST", "127.0.0.1"),\n    port=int(os.environ.get("DB_PORT", "3306")),\n    user=os.environ.get("DB_USER", "root"),\n    password=os.environ.get("DB_PASSWORD", ""),\n    db=os.environ.get("DB_NAME", "attendance_database1"),\n)
+conn = MySQLdb.connect(
+    host=os.environ.get("DB_HOST", "127.0.0.1"),
+    port=int(os.environ.get("DB_PORT", "3306")),
+    user=os.environ.get("DB_USER", "root"),
+    password=os.environ.get("DB_PASSWORD", ""),
+    db=os.environ.get("DB_NAME", "attendance_database1"),
+)
 conn.autocommit(on=True)
 
 
@@ -241,36 +247,34 @@ def addRecord():
 
 
 # def unzip_file(zip_src, dst_dir, roll_id):
-#     """
-#     Extracts only image files into the student's roll number folder, ignoring subfolders.
-    
-#     Args:
-#         zip_src (str): Path to the uploaded ZIP file.
-#         dst_dir (str): Target directory (uploads/{batch}/{branch}/{roll_id}).
-#         roll_id (str): Student's roll number.
-
-#     Returns:
-#         str: Path to the extracted folder.
-#     """
-
-#     if not zipfile.is_zipfile(zip_src):
-#         print("❌ Not a valid ZIP file!")
-#         return None
-
-#     with zipfile.ZipFile(zip_src, "r") as fz:
-#         extract_to = os.path.join(dst_dir, roll_id)  # Ensure extraction inside roll_no folder
-#         os.makedirs(extract_to, exist_ok=True)
-
-#         for file in fz.namelist():
-#             filename = os.path.basename(file)  # Extract filename only, ignore parent folders
-#             if filename:  # Ensure it's not an empty folder
-#                 file_path = os.path.join(extract_to, filename)
-#                 with fz.open(file) as source, open(file_path, "wb") as target:
-#                     target.write(source.read())
-
-#         print(f"✅ Extracted files to: {extract_to}")
-
-#     return extract_to  # Return path to extracted folder
+    """Safely extract a bounded set of image files for one student."""
+    if not zipfile.is_zipfile(zip_src):
+        return None
+    extract_to = os.path.join(dst_dir, str(roll_id))
+    os.makedirs(extract_to, exist_ok=True)
+    allowed = (".jpg", ".jpeg", ".png")
+    total_bytes = 0
+    saved = 0
+    try:
+        with zipfile.ZipFile(zip_src, "r") as archive:
+            for item in archive.infolist():
+                if item.is_dir():
+                    continue
+                filename = secure_filename(os.path.basename(item.filename))
+                if not filename or not filename.lower().endswith(allowed):
+                    continue
+                if item.file_size > 8 * 1024 * 1024:
+                    continue
+                total_bytes += item.file_size
+                if total_bytes > 40 * 1024 * 1024 or saved >= 200:
+                    break
+                destination = os.path.join(extract_to, filename)
+                with archive.open(item) as source, open(destination, "wb") as target:
+                    shutil.copyfileobj(source, target)
+                saved += 1
+    except (zipfile.BadZipFile, OSError):
+        return None
+    return extract_to if saved else None
 
 
 
@@ -334,7 +338,7 @@ def unzip_file(zip_src, dst_dir, roll_id):
 
 
 # @app.route("/studentReg", methods=["GET", "POST"])
-# @role_required("Student")
+@role_required("Student")
 def studentReg():
 #     roll_id = session.get("user")  # ✅ Ensure user session exists
 #     cursor = conn.cursor()
@@ -410,7 +414,7 @@ def studentReg():
 
 
 # @app.route("/studentDashboard", methods=["GET", "POST"])
-# @role_required("Student")
+@role_required("Student")
 def studentDashboard():
 #     if "user" not in session:  
 #         return redirect(url_for("index"))
@@ -506,7 +510,7 @@ def studentDashboard():
 #         return redirect(url_for("studentDashboard", user_id=roll_id))
 
 #     if request.method == "POST":
-#         roll_id = request.values.get("roll_id", "").strip()
+#         roll_id = session.get("user")  # Student identity comes only from the login session
 #         branch = request.form.get("branch", "").strip()  
 #         batch = request.values.get("batch", "").strip()
 #         zip_file = request.files.get("file")
@@ -578,9 +582,15 @@ def studentReg():
         if not student:
             return render_template("registration.html", msg="❌ Roll ID not found. Please check again.")
 
-        # Prepare target directory and save the uploaded zip file
-        target = os.path.join("uploads", batch, branch)
-        zip_src = os.path.join("zip_uploads", zip_file.filename)
+        # Validate folder components and use a generated archive name.
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
+            return render_template("registration.html", msg="❌ Invalid batch or branch.")
+        if not zip_file.filename.lower().endswith(".zip"):
+            return render_template("registration.html", msg="❌ Please upload a ZIP file.")
+        target = os.path.join(APP_ROOT, "uploads", batch, branch)
+        zip_dir = os.path.join(APP_ROOT, "zip_uploads")
+        os.makedirs(zip_dir, exist_ok=True)
+        zip_src = os.path.join(zip_dir, uuid.uuid4().hex + ".zip")
         zip_file.save(zip_src)
 
         # Call the unzip_file function to extract files to the student's folder
@@ -589,8 +599,9 @@ def studentReg():
         if not extracted_folder:
             return render_template("registration.html", msg="❌ Failed to extract ZIP file.")
 
-        # Remove the ZIP file after extraction
-        os.remove(zip_src)  # ✅ Remove ZIP file after extraction
+        # Remove the temporary ZIP archive after extraction.
+        if os.path.exists(zip_src):
+            os.remove(zip_src)
 
         # Update student information in the database
         cursor.execute("UPDATE student_login SET branch=%s, batch=%s WHERE roll_no=%s;", (branch, batch, roll_id))
@@ -810,7 +821,8 @@ def faculty():
             if recognized_students:
                 print(f"✅ Recognized Students: {recognized_students}")
             else:
-                print("⚠️ No students recognized in the video. Marking all as absent.")
+                print("No confident face matches; attendance was not written.")
+                return render_template("dashB_faculty.html", msg="❌ No confident faces recognized. Attendance NOT saved; check the video/model and retry.", facul_id=fac_id)
 
             # ✅ Fetch all registered students for batch & branch
             cursor.execute("SELECT roll_no FROM student_login WHERE batch=%s AND branch=%s", (batch, branch))

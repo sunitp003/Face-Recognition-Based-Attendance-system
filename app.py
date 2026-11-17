@@ -747,16 +747,17 @@ def faculty():
             recognized = recognition.recognize_attendance(
                 APP_ROOT, file_path, branch, batch
             )
+            recognition_failed = recognized is None
         except Exception:
             logging.exception("Recognition processing failed")
-            recognized = []
+            recognized = None
+            recognition_failed = True
         finally:
             if os.path.exists(file_path):
                 os.remove(file_path)
 
-        # Do not save attendance here. Detection is only a suggestion; a faculty
-        # member must verify the complete present list before any DB write.
-        recognized_students = sorted(set(map(str, recognized)) & all_students)
+        # Detection is advisory; faculty must verify the complete list.
+        recognized_students = sorted(set(map(str, recognized or [])) & all_students)
         _store_pending_attendance({
             "faculty_id": fac_id,
             "batch": batch,
@@ -765,6 +766,7 @@ def faculty():
             "subject": subject,
             "date": date_value,
             "suggested_present": recognized_students,
+            "recognition_failed": recognition_failed,
         })
         return redirect(url_for("confirm_attendance"))
 
@@ -818,6 +820,7 @@ def confirm_attendance():
             subject=subject,
             attendance_date=date_value,
             detected_count=len(pending.get("suggested_present", [])),
+            recognition_failed=bool(pending.get("recognition_failed")),
         )
 
     selected_present = set(request.form.getlist("present_ids"))
@@ -838,6 +841,7 @@ def confirm_attendance():
             subject=subject,
             attendance_date=date_value,
             detected_count=len(pending.get("suggested_present", [])),
+            recognition_failed=bool(pending.get("recognition_failed")),
             msg="Invalid student selection. Please review again.",
         )
 
@@ -893,6 +897,7 @@ def confirm_attendance():
             subject=subject,
             attendance_date=date_value,
             detected_count=len(pending.get("suggested_present", [])),
+            recognition_failed=bool(pending.get("recognition_failed")),
             msg="Attendance could not be saved. No partial records were committed.",
         )
 

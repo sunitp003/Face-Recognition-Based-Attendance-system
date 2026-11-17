@@ -1,6 +1,7 @@
-from flask import Flask, render_template, url_for, request, redirect, session, send_file
+from flask import Flask, render_template, url_for, request, redirect, session, send_file, g
 from functools import wraps
 from werkzeug.utils import secure_filename
+from werkzeug.local import LocalProxy
 from datetime import datetime
 import os
 import re
@@ -8,6 +9,10 @@ import uuid
 import shutil
 import zipfile
 import secrets
+import logging
+import json
+import time
+from io import BytesIO
 
 import MySQLdb
 import pandas as pd
@@ -15,12 +20,22 @@ import modelTrain
 import recognition
 app = Flask(__name__)
 
-# Secure secret key for session management
-app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
-
 # Define project root
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+_is_production = os.environ.get("FLASK_ENV", "").lower() == "production" or os.environ.get("APP_ENV", "").lower() == "production"
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key and _is_production:
+    raise RuntimeError("SECRET_KEY must be configured in production")
+if not _secret_key:
+    logging.warning("SECRET_KEY is not configured; local sessions reset after restart")
+    _secret_key = secrets.token_hex(32)
+app.secret_key = _secret_key
+app.config.update(
+    MAX_CONTENT_LENGTH=50 * 1024 * 1024,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "0").lower() in {"1", "true", "yes"},
+)
 
 def role_required(*allowed_roles):
     """Protect routes using the authenticated role in the session."""
@@ -34,15 +49,64 @@ def role_required(*allowed_roles):
     return decorator
 
 
-# Database connection
-conn = MySQLdb.connect(
-    host=os.environ.get("DB_HOST", "127.0.0.1"),
-    port=int(os.environ.get("DB_PORT", "3306")),
-    user=os.environ.get("DB_USER", "root"),
-    password=os.environ.get("DB_PASSWORD", ""),
-    db=os.environ.get("DB_NAME", "attendance_database1"),
-)
-conn.autocommit(True)
+# Request-scoped connections prevent concurrent requests sharing one connection.
+def get_db():
+    if "db" not in g:
+        g.db = MySQLdb.connect(
+            host=os.environ.get("DB_HOST", "127.0.0.1"),
+            port=int(os.environ.get("DB_PORT", "3306")),
+            user=os.environ.get("DB_USER", "root"),
+            password=os.environ.get("DB_PASSWORD", ""),
+            db=os.environ.get("DB_NAME", "attendance_database1"),
+            charset="utf8mb4",
+        )
+        g.db.autocommit(True)
+    return g.db
+
+def close_db(error=None):
+    database = g.pop("db", None)
+    if database is not None:
+        database.close()
+
+app.teardown_appcontext(close_db)
+conn = LocalProxy(get_db)
+
+PENDING_DIR = os.path.join(APP_ROOT, "instance", "pending_attendance")
+
+def _store_pending_attendance(data):
+    os.makedirs(PENDING_DIR, exist_ok=True)
+    token = uuid.uuid4().hex
+    temporary_path = os.path.join(PENDING_DIR, token + ".tmp")
+    final_path = os.path.join(PENDING_DIR, token + ".json")
+    payload = dict(data)
+    payload["created_at"] = time.time()
+    with open(temporary_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file)
+    os.replace(temporary_path, final_path)
+    session["pending_attendance_id"] = token
+
+def _load_pending_attendance():
+    token = session.get("pending_attendance_id", "")
+    if not re.fullmatch(r"[a-f0-9]{32}", str(token)):
+        return None
+    path = os.path.join(PENDING_DIR, token + ".json")
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            payload = json.load(file)
+        if time.time() - float(payload.get("created_at", 0)) > 7200:
+            _clear_pending_attendance()
+            return None
+        return payload
+    except (OSError, ValueError, TypeError):
+        return None
+
+def _clear_pending_attendance():
+    token = session.pop("pending_attendance_id", None)
+    if token and re.fullmatch(r"[a-f0-9]{32}", str(token)):
+        try:
+            os.remove(os.path.join(PENDING_DIR, token + ".json"))
+        except FileNotFoundError:
+            pass
 
 
 
@@ -77,6 +141,7 @@ def index():
 
             if student:
                 branch, batch = student
+                session.clear()
                 session["user"] = password  # Store roll number in session
                 session["role"] = "Student"  # Store role
 
@@ -109,6 +174,7 @@ def index():
             #     return render_template("index.html", error_msg="❌ Invalid Faculty ID")
             if faculty:
                 print(f"✅ Faculty ID {username} found!")
+                session.clear()
                 session["user"] = str(faculty[1])  # Store the actual faculty_id (foreign key)
                 session["role"] = "Faculty"  # Store role as Faculty
                 return redirect(url_for("faculty"))  # Redirect to Faculty Dashboard
@@ -131,6 +197,7 @@ def index():
             admin = cursor.fetchone()
 
             if admin:
+                session.clear()
                 session["user"] = username
                 session["role"] = "Admin"  # Store admin role
                 return redirect(url_for("admin"))  # Redirect to Admin Dashboard
@@ -245,14 +312,17 @@ def addRecord():
 
 
 def unzip_file(zip_src, dst_dir, roll_id):
-    """Safely extract a bounded set of image files for one student."""
+    """Extract a bounded image set, then atomically replace previous samples."""
     if not zipfile.is_zipfile(zip_src):
         return None
+    os.makedirs(dst_dir, exist_ok=True)
     extract_to = os.path.join(dst_dir, str(roll_id))
-    os.makedirs(extract_to, exist_ok=True)
+    staging = os.path.join(dst_dir, f".{roll_id}.{uuid.uuid4().hex}.tmp")
+    backup = os.path.join(dst_dir, f".{roll_id}.{uuid.uuid4().hex}.bak")
     allowed = (".jpg", ".jpeg", ".png")
     total_bytes = 0
     saved = 0
+    os.makedirs(staging, exist_ok=False)
     try:
         with zipfile.ZipFile(zip_src, "r") as archive:
             for item in archive.infolist():
@@ -261,18 +331,35 @@ def unzip_file(zip_src, dst_dir, roll_id):
                 filename = secure_filename(os.path.basename(item.filename))
                 if not filename or not filename.lower().endswith(allowed):
                     continue
-                if item.file_size > 8 * 1024 * 1024:
+                if item.file_size <= 0 or item.file_size > 8 * 1024 * 1024:
                     continue
                 total_bytes += item.file_size
                 if total_bytes > 40 * 1024 * 1024 or saved >= 200:
                     break
-                destination = os.path.join(extract_to, f"{saved + 1}_{filename}")
+                destination = os.path.join(staging, f"{saved + 1}_{filename}")
                 with archive.open(item) as source, open(destination, "wb") as target:
                     shutil.copyfileobj(source, target)
                 saved += 1
-    except (zipfile.BadZipFile, OSError):
+        if not saved:
+            return None
+        if os.path.exists(extract_to):
+            os.replace(extract_to, backup)
+        try:
+            os.replace(staging, extract_to)
+        except OSError:
+            if os.path.exists(backup):
+                os.replace(backup, extract_to)
+            raise
+        if os.path.exists(backup):
+            shutil.rmtree(backup, ignore_errors=True)
+        return extract_to
+    except (zipfile.BadZipFile, OSError, ValueError):
+        logging.exception("Student image ZIP extraction failed")
         return None
-    return extract_to if saved else None
+    finally:
+        if os.path.exists(staging):
+            shutil.rmtree(staging, ignore_errors=True)
+
 @app.route("/studentReg", methods=["GET", "POST"])
 @role_required("Student")
 def studentReg():
@@ -525,20 +612,28 @@ def faculty():
         attendance_dir = os.path.join(APP_ROOT, "attendance")
         os.makedirs(attendance_dir, exist_ok=True)
         file_path = os.path.join(attendance_dir, f"{uuid.uuid4().hex}.mp4")
-        upload.save(file_path)
-
         try:
+            upload.save(file_path)
+            with open(file_path, "rb") as video_file:
+                header = video_file.read(12)
+            if len(header) < 12 or b"ftyp" not in header[4:12]:
+                return render_template(
+                    "dashB_faculty.html", msg="The uploaded file is not a valid MP4 video.", facul_id=fac_id
+                )
             recognized = recognition.recognize_attendance(
                 APP_ROOT, file_path, branch, batch
             )
-        except Exception as exc:
-            print(f"Recognition failed: {exc}")
+        except Exception:
+            logging.exception("Recognition processing failed")
             recognized = []
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
         # Do not save attendance here. Detection is only a suggestion; a faculty
         # member must verify the complete present list before any DB write.
         recognized_students = sorted(set(map(str, recognized)) & all_students)
-        session["pending_attendance"] = {
+        _store_pending_attendance({
             "faculty_id": fac_id,
             "batch": batch,
             "branch": branch,
@@ -546,7 +641,7 @@ def faculty():
             "subject": subject,
             "date": date_value,
             "suggested_present": recognized_students,
-        }
+        })
         return redirect(url_for("confirm_attendance"))
 
     return render_template("dashB_faculty.html", facul_id=session.get("user"))
@@ -555,7 +650,7 @@ def faculty():
 @app.route("/faculty/confirm_attendance", methods=["GET", "POST"])
 @role_required("Faculty")
 def confirm_attendance():
-    pending = session.get("pending_attendance")
+    pending = _load_pending_attendance()
     fac_id = str(session.get("user", ""))
     if not pending or pending.get("faculty_id") != fac_id:
         return redirect(url_for("faculty"))
@@ -575,7 +670,7 @@ def confirm_attendance():
     )
     student_rows = cursor.fetchall()
     if not student_rows:
-        session.pop("pending_attendance", None)
+        _clear_pending_attendance()
         return render_template(
             "dashB_faculty.html",
             msg="No registered students found. Attendance was not saved.",
@@ -877,11 +972,15 @@ def download_attendance():
     df["Percentage (%)"] = df["Percentage (%)"].astype(str) + "%"
 
     # ✅ Save to Excel
-    file_path = "attendance_records.xlsx"
-    df.to_excel(file_path, index=False)
-
-    # ✅ Send file as download
-    return send_file(file_path, as_attachment=True)
+    output = BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name="attendance_records.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 
@@ -896,4 +995,4 @@ def about():
 # -------------------------------- MAIN FUNCTION -------------------------------- #
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)

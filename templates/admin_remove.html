@@ -125,6 +125,7 @@
         
         <form action="/admin/delete" method="POST">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="radio-container">
                 <input type="radio" name="remove_id" value="Student" id="student" required>
                 <label for="student">Student</label>

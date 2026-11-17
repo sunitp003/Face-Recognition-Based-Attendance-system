@@ -12,7 +12,8 @@ USE `attendance_database1`;
 -- Admin Table
 CREATE TABLE IF NOT EXISTS `admin_login` (
   `username` VARCHAR(20) NOT NULL,
-  `password` VARCHAR(15) NOT NULL,
+  `password` VARCHAR(255) DEFAULT NULL,
+  `password_hash` VARCHAR(255) DEFAULT NULL,
   UNIQUE KEY `username_UNIQUE` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS `admin_login` (
 CREATE TABLE IF NOT EXISTS `faculty_login` (
   `faculty_name` VARCHAR(50) NOT NULL,
   `faculty_id` VARCHAR(25) NOT NULL PRIMARY KEY,
+  `password_hash` VARCHAR(255) DEFAULT NULL,
   `department` VARCHAR(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -27,6 +29,7 @@ CREATE TABLE IF NOT EXISTS `faculty_login` (
 CREATE TABLE IF NOT EXISTS `student_login` (
   `student_name` VARCHAR(50) NOT NULL,
   `roll_no` VARCHAR(15) NOT NULL PRIMARY KEY,
+  `password_hash` VARCHAR(255) DEFAULT NULL,
   `branch` VARCHAR(50) DEFAULT NULL,
   `batch` VARCHAR(20) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

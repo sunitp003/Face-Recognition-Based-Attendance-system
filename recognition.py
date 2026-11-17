@@ -1,9 +1,4 @@
-"""Conservative video face recognition for attendance.
-
-LBPH is a distance-based recognizer (lower is better). A single frame is never
-sufficient to mark a student present: predictions are aggregated over sampled
-frames and uncertain identities are rejected.
-"""
+"""Conservative multi-frame attendance recognition using YuNet + SFace."""
 import json
 import os
 from collections import defaultdict
@@ -12,58 +7,82 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-FACE_SIZE = (200, 200)
-DEFAULT_DISTANCE_THRESHOLD = 55.0
+DETECTOR_RELATIVE_PATH = os.path.join("models", "face_detection_yunet_2023mar.onnx")
+RECOGNIZER_RELATIVE_PATH = os.path.join("models", "face_recognition_sface_2021dec.onnx")
+DEFAULT_COSINE_THRESHOLD = 0.45
+DEFAULT_MIN_MARGIN = 0.06
 DEFAULT_MIN_VOTES = 3
 FRAME_SAMPLE_INTERVAL = 5
 
 
-def _face_cascade():
-    cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+def _load_models(root):
+    detector_path = os.path.join(root, DETECTOR_RELATIVE_PATH)
+    recognizer_path = os.path.join(root, RECOGNIZER_RELATIVE_PATH)
+    if not os.path.isfile(detector_path) or not os.path.isfile(recognizer_path):
+        raise FileNotFoundError("Run 'python download_models.py' to fetch YuNet and SFace.")
+    detector = cv2.FaceDetectorYN.create(
+        detector_path, "", (320, 320), 0.85, 0.3, 5000
     )
-    if cascade.empty():
-        raise RuntimeError("Could not load OpenCV Haar face detector")
-    return cascade
+    recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
+    return detector, recognizer
 
 
-def preprocess_face(gray_face):
-    """Use the exact same grayscale/equalization/size pipeline at train and test."""
-    if gray_face is None or gray_face.size == 0:
+def _normalized_feature(image, face_row, recognizer):
+    aligned = recognizer.alignCrop(image, face_row)
+    feature = np.asarray(recognizer.feature(aligned), dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(feature))
+    if not np.isfinite(norm) or norm == 0:
         return None
-    face = cv2.resize(gray_face, FACE_SIZE, interpolation=cv2.INTER_AREA)
-    return cv2.equalizeHist(face)
+    return feature / norm
+
+
+def _best_identity(feature, gallery):
+    scores = []
+    for student_id, samples in gallery.items():
+        vectors = np.asarray(samples, dtype=np.float32)
+        similarities = vectors @ feature
+        # Average the best few enrollment samples to reduce one-photo outliers.
+        top = np.sort(similarities)[-min(3, len(similarities)):]
+        scores.append((float(np.mean(top)), str(student_id)))
+    scores.sort(reverse=True)
+    if not scores:
+        return None, 0.0, 0.0
+    best_score, best_id = scores[0]
+    second_score = scores[1][0] if len(scores) > 1 else -1.0
+    return best_id, best_score, best_score - second_score
 
 
 def recognize_attendance(root, video_path, branch, batch):
     model_dir = os.path.join(root, "models", str(batch), str(branch))
-    model_path = os.path.join(model_dir, "trainer.yml")
-    labels_path = os.path.join(model_dir, "labels.json")
-    if not os.path.isfile(model_path) or not os.path.isfile(labels_path):
-        print("Recognition model or labels map missing. Retrain the model.")
+    gallery_path = os.path.join(model_dir, "face_embeddings.json")
+    if not os.path.isfile(gallery_path) or not os.path.isfile(video_path):
+        print("SFace gallery or video is missing.")
         return []
 
     try:
-        with open(labels_path, "r", encoding="utf-8") as file:
-            label_map = {int(k): str(v) for k, v in json.load(file).items()}
-        recognizer = cv2.face.LBPHFaceRecognizer_create()
-        recognizer.read(model_path)
+        with open(gallery_path, "r", encoding="utf-8") as file:
+            saved = json.load(file)
+        if saved.get("model") != "OpenCV-SFace" or saved.get("version") != 1:
+            raise ValueError("Unsupported face gallery format; retrain the model.")
+        gallery = {
+            str(student_id): np.asarray(vectors, dtype=np.float32)
+            for student_id, vectors in saved.get("students", {}).items()
+        }
+        if not gallery:
+            return []
+        detector, recognizer = _load_models(root)
     except Exception as exc:
-        print(f"Unable to load trained model: {exc}")
+        print(f"Unable to load SFace gallery/models: {exc}")
         return []
 
-    if not os.path.isfile(video_path):
-        print(f"Video not found: {video_path}")
-        return []
-
+    threshold = float(os.getenv("SFACE_COSINE_THRESHOLD", DEFAULT_COSINE_THRESHOLD))
+    min_margin = float(os.getenv("SFACE_MIN_MARGIN", DEFAULT_MIN_MARGIN))
+    min_votes = int(os.getenv("SFACE_MIN_VOTES", DEFAULT_MIN_VOTES))
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"Unable to open video: {video_path}")
         return []
 
-    detector = _face_cascade()
-    threshold = float(os.getenv("LBPH_DISTANCE_THRESHOLD", DEFAULT_DISTANCE_THRESHOLD))
-    min_votes = int(os.getenv("LBPH_MIN_VOTES", DEFAULT_MIN_VOTES))
     votes = defaultdict(list)
     frame_index = 0
     today = datetime.now().strftime("%Y-%m-%d")
@@ -78,48 +97,42 @@ def recognize_attendance(root, video_path, branch, batch):
             frame_index += 1
             if frame_index % FRAME_SAMPLE_INTERVAL:
                 continue
-
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.equalizeHist(gray)
-            faces = detector.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=6, minSize=(80, 80)
-            )
+            height, width = frame.shape[:2]
+            detector.setInputSize((width, height))
+            _, faces = detector.detect(frame)
+            if faces is None:
+                continue
             seen_in_frame = set()
-            for face_index, (x, y, w, h) in enumerate(faces):
-                crop = preprocess_face(gray[y:y + h, x:x + w])
-                if crop is None:
-                    continue
+            for face_index, face_row in enumerate(faces):
                 try:
-                    label, distance = recognizer.predict(crop)
+                    feature = _normalized_feature(frame, face_row, recognizer)
+                    if feature is None:
+                        continue
+                    student_id, score, margin = _best_identity(feature, gallery)
                 except cv2.error:
                     continue
-                student_id = label_map.get(int(label))
-                if student_id is None or not np.isfinite(distance):
-                    continue
-                # Keep evidence for human review; do not treat it as a positive match.
-                if distance > threshold:
+                if student_id is None or score < threshold or margin < min_margin:
                     review_path = os.path.join(
                         review_dir, f"frame_{frame_index}_face_{face_index}.jpg"
                     )
-                    cv2.imwrite(review_path, crop)
+                    x, y, w, h = np.asarray(face_row[:4], dtype=int)
+                    crop = frame[max(0, y):max(0, y + h), max(0, x):max(0, x + w)]
+                    if crop.size:
+                        cv2.imwrite(review_path, crop)
                     continue
                 if student_id not in seen_in_frame:
-                    votes[student_id].append(float(distance))
+                    votes[student_id].append(score)
                     seen_in_frame.add(student_id)
     finally:
         cap.release()
 
     accepted = []
-    for student_id, distances in votes.items():
-        # Require repeated independent observations, not one lucky frame.
-        if len(distances) < min_votes:
-            continue
-        median_distance = float(np.median(distances))
-        if median_distance <= threshold:
+    for student_id, scores in votes.items():
+        median_score = float(np.median(scores))
+        if len(scores) >= min_votes and median_score >= threshold:
             accepted.append(student_id)
         print(
-            f"Candidate {student_id}: votes={len(distances)}, "
-            f"median_distance={median_distance:.1f}"
+            f"Candidate {student_id}: votes={len(scores)}, "
+            f"median_cosine={median_score:.3f}"
         )
-
     return sorted(accepted)

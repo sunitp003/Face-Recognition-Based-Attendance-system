@@ -1,26 +1,18 @@
-from flask import Flask, render_template, url_for, request, redirect,flash, jsonify, json,session
+from flask import Flask, render_template, url_for, request, redirect, session, send_file
 from functools import wraps
 from werkzeug.utils import secure_filename
+from datetime import datetime
+import os
 import re
 import uuid
-from flask_session import Session
-from flask_login import logout_user
-from flask_ngrok import run_with_ngrok
-from dataset_prepare import face_detect #Dataset_prepare.py
-import modelTrain  # modelTrain.py
-import os
-import MySQLdb
-import pymysql
-
-import pandas as pd
-from flask import send_file
-
 import shutil
 import zipfile
-import recognition #recognition.py
 import secrets
-import openpyxl
 
+import MySQLdb
+import pandas as pd
+import modelTrain
+import recognition
 app = Flask(__name__)
 
 # Secure secret key for session management
@@ -50,7 +42,7 @@ conn = MySQLdb.connect(
     password=os.environ.get("DB_PASSWORD", ""),
     db=os.environ.get("DB_NAME", "attendance_database1"),
 )
-conn.autocommit(on=True)
+conn.autocommit(False)
 
 
 
@@ -71,8 +63,10 @@ def index():
 
     if request.method == "POST":
         loginAs = request.values.get("loginAs")
-        username = request.values.get("username").strip()
-        password = request.values.get("password").strip()
+        username = request.values.get("username", "").strip()
+        password = request.values.get("password", "").strip()
+        if not username or not password:
+            return render_template("index.html", error_msg="Please enter both username and password.")
         cursor = conn.cursor()
 
         if loginAs == "Student":
@@ -115,7 +109,7 @@ def index():
             #     return render_template("index.html", error_msg="❌ Invalid Faculty ID")
             if faculty:
                 print(f"✅ Faculty ID {username} found!")
-                session["user"] = username  # Store faculty ID in session
+                session["user"] = str(faculty[1])  # Store the actual faculty_id (foreign key)
                 session["role"] = "Faculty"  # Store role as Faculty
                 return redirect(url_for("faculty"))  # Redirect to Faculty Dashboard
             else:
@@ -176,8 +170,10 @@ def set_response_headers(response):
 @role_required("Admin")
 def admin():
     if request.method == "POST":
-        batch = request.values.get("batch").strip()
-        branch = request.values.get("branch").strip()
+        batch = request.values.get("batch", "").strip()
+        branch = request.values.get("branch", "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
+            return render_template("dashB_admin.html", msg="Invalid batch or branch.")
         if batch and branch:
             ret = modelTrain.TrainImages(APP_ROOT, batch, branch)
             msg = "Model Trained Successfully" if ret == 1 else "No images found!"
@@ -190,8 +186,8 @@ def admin():
 @role_required("Admin")
 def deleteStudent():
     if request.method == "POST":
-        entity = request.values.get("remove_id").strip()
-        roll_id = request.values.get("id").strip()
+        entity = request.values.get("remove_id", "").strip()
+        roll_id = request.values.get("id", "").strip()
         cursor = conn.cursor()
         if entity == "Student":
             cursor.execute("DELETE FROM student_login WHERE BINARY roll_no=%s", [roll_id])
@@ -210,9 +206,11 @@ def deleteStudent():
 @role_required("Admin")
 def addRecord():
     if request.method == "POST":
-        entity = request.values.get("add_id").strip()
-        username = request.values.get("username").strip().capitalize()
-        password = request.values.get("password").strip()
+        entity = request.values.get("add_id", "").strip()
+        username = request.values.get("username", "").strip().capitalize()
+        password = request.values.get("password", "").strip()
+        if not entity or not username or not password:
+            return render_template("admin_add.html", msg="Please fill all fields.")
         cursor = conn.cursor()
 
         try:
@@ -226,7 +224,7 @@ def addRecord():
                 msg = "Added Faculty Login Successfully"
             else:
                 msg = "Invalid entity type."
-        except pymysql.IntegrityError:
+        except MySQLdb.IntegrityError:
             msg = "This record is already in the database"
 
         return render_template("admin_add.html", msg=msg)
@@ -246,7 +244,7 @@ def addRecord():
 # --------------------------- STUDENT REGISTRATION -------------------------- #
 
 
-# def unzip_file(zip_src, dst_dir, roll_id):
+def unzip_file(zip_src, dst_dir, roll_id):
     """Safely extract a bounded set of image files for one student."""
     if not zipfile.is_zipfile(zip_src):
         return None
@@ -498,73 +496,130 @@ def student_view_attendance():
 @role_required("Faculty")
 def faculty():
     if request.method == "POST":
-        fac_id = session.get("user")  # Trust only the authenticated faculty identity
-        batch = request.values.get("batch")
-        branch = request.values.get("branch")
-        year = request.values.get("year")
-        subject = request.values.get("subject")
-        date = request.values.get("date")
+        fac_id = str(session.get("user", ""))
+        batch = request.form.get("batch", "").strip()
+        branch = request.form.get("branch", "").strip()
+        year = request.form.get("year", "").strip()
+        subject = request.form.get("subject", "").strip()
+        date_value = request.form.get("date", "").strip()
         upload = request.files.get("file")
 
+        if not all((fac_id, batch, branch, year, subject, date_value)):
+            return render_template(
+                "dashB_faculty.html",
+                msg="Please provide batch, branch, year, subject, date and video.",
+                facul_id=fac_id,
+            )
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(
+            r"[A-Za-z0-9_-]{1,30}", branch
+        ):
+            return render_template(
+                "dashB_faculty.html", msg="Invalid batch or branch.", facul_id=fac_id
+            )
+        try:
+            datetime.strptime(date_value, "%Y-%m-%d")
+        except ValueError:
+            return render_template(
+                "dashB_faculty.html", msg="Invalid attendance date.", facul_id=fac_id
+            )
+        if not upload or not upload.filename:
+            return render_template(
+                "dashB_faculty.html", msg="Please upload an MP4 video.", facul_id=fac_id
+            )
+        if not upload.filename.lower().endswith(".mp4"):
+            return render_template(
+                "dashB_faculty.html", msg="Only MP4 videos are supported.", facul_id=fac_id
+            )
+
         cursor = conn.cursor()
-
-        # ✅ Check if attendance already recorded for this date
-        cursor.execute("""
-            SELECT * FROM attendance 
+        cursor.execute(
+            """
+            SELECT 1 FROM attendance
             WHERE attendance_date=%s AND batch=%s AND branch=%s AND subject_name=%s
-        """, (date, batch, branch, subject))
-        existing_attendance = cursor.fetchall()
+            LIMIT 1
+            """,
+            (date_value, batch, branch, subject),
+        )
+        if cursor.fetchone():
+            return render_template(
+                "dashB_faculty.html",
+                msg="Attendance already exists for this date, batch, branch and subject.",
+                facul_id=fac_id,
+            )
 
-        if existing_attendance:
-            print(f"⚠️ Attendance already recorded for {date}, batch: {batch}, branch: {branch}, subject: {subject}")
-            return render_template("dashB_faculty.html", msg="⚠️ Attendance already uploaded for this date.", facul_id=fac_id)
+        cursor.execute(
+            "SELECT roll_no FROM student_login WHERE batch=%s AND branch=%s",
+            (batch, branch),
+        )
+        all_students = {str(row[0]) for row in cursor.fetchall()}
+        if not all_students:
+            return render_template(
+                "dashB_faculty.html",
+                msg="No registered students found for this batch and branch.",
+                facul_id=fac_id,
+            )
 
-        # ✅ Save uploaded attendance video file
-        if upload:
-            filename = f"{batch}_{branch}_{subject}_{date}.mp4"
-            file_path = os.path.join(APP_ROOT, "attendance", filename)
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Ensure directory exists
-            upload.save(file_path)
+        # Use a random server-side filename; never put form values into a path.
+        attendance_dir = os.path.join(APP_ROOT, "attendance")
+        os.makedirs(attendance_dir, exist_ok=True)
+        file_path = os.path.join(attendance_dir, f"{uuid.uuid4().hex}.mp4")
+        upload.save(file_path)
 
-            print(f"📂 File uploaded successfully: {file_path}")
+        try:
+            recognized = recognition.recognize_attendance(
+                APP_ROOT, file_path, branch, batch
+            )
+        except Exception as exc:
+            print(f"Recognition failed: {exc}")
+            recognized = []
 
-            # ✅ Recognize faces from the video
-            recognized_students = recognition.recognize_attendance(APP_ROOT, file_path, branch, batch)
+        # A model can contain stale labels. Never write an identity that is not
+        # registered in the selected batch/branch.
+        recognized_students = set(map(str, recognized)) & all_students
+        if not recognized_students:
+            return render_template(
+                "dashB_faculty.html",
+                msg=(
+                    "No verified student identity matched this batch. "
+                    "Attendance was NOT saved; check the video and retrain the model."
+                ),
+                facul_id=fac_id,
+            )
 
-            if recognized_students:
-                print(f"✅ Recognized Students: {recognized_students}")
-            else:
-                print("No confident face matches; attendance was not written.")
-                return render_template("dashB_faculty.html", msg="❌ No confident faces recognized. Attendance NOT saved; check the video/model and retry.", facul_id=fac_id)
-
-            # ✅ Fetch all registered students for batch & branch
-            cursor.execute("SELECT roll_no FROM student_login WHERE batch=%s AND branch=%s", (batch, branch))
-            all_students = [str(row[0]) for row in cursor.fetchall()]  # Convert all student IDs to strings
-
-            print(f"📋 Total Registered Students: {len(all_students)} -> {all_students}")
-
-            # ✅ Convert recognized IDs to string for correct comparison
-            recognized_students = set(str(Id) for Id in recognized_students)
-
-            # ✅ Insert or update attendance records
-            for student_id in all_students:
-                status = "Present" if str(student_id) in recognized_students else "Absent"
-                
-                cursor.execute("""
-                    INSERT INTO attendance (student_ID, faculty_ID, batch, branch, year, subject_name, attendance_date, attendance_status)
+        try:
+            for student_id in sorted(all_students):
+                status = "Present" if student_id in recognized_students else "Absent"
+                cursor.execute(
+                    """
+                    INSERT INTO attendance
+                    (student_ID, faculty_ID, batch, branch, year, subject_name,
+                     attendance_date, attendance_status)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE attendance_status = VALUES(attendance_status);
-                """, (student_id, fac_id, batch, branch, year, subject, date, status))
-
+                    ON DUPLICATE KEY UPDATE attendance_status=VALUES(attendance_status)
+                    """,
+                    (
+                        student_id, fac_id, batch, branch, year, subject,
+                        date_value, status,
+                    ),
+                )
             conn.commit()
-            msg = "✅ Attendance saved successfully!"
-            print(msg)
-            return render_template("dashB_faculty.html", msg=msg, facul_id=fac_id)
+        except Exception as exc:
+            conn.rollback()
+            print(f"Attendance transaction failed: {exc}")
+            return render_template(
+                "dashB_faculty.html",
+                msg="Attendance could not be saved. No partial records were committed.",
+                facul_id=fac_id,
+            )
 
-    return render_template("dashB_faculty.html", facul_id=request.args.get("facul_id"))
+        msg = (
+            f"Attendance saved. Verified Present: {len(recognized_students)} "
+            f"of {len(all_students)} students."
+        )
+        print(msg)
+        return render_template("dashB_faculty.html", msg=msg, facul_id=fac_id)
 
-
-
+    return render_template("dashB_faculty.html", facul_id=session.get("user"))
 
 
 
@@ -639,6 +694,8 @@ def edit_attendance():
             student_id = request.form.get("s_id", "").strip()
             status = request.form.get("status", "").strip()
             date = request.form.get("date", "").strip()
+            if status not in {"Present", "Absent"}:
+                return render_template("edit_att.html", msg="Invalid attendance status.")
 
             cursor = conn.cursor()
 

@@ -306,6 +306,10 @@ def change_password():
         conn.commit()
         session.pop("must_change_password", None)
         if role == "Student":
+            cursor.execute("SELECT branch FROM student_login WHERE roll_no=%s", (user_id,))
+            student_row = cursor.fetchone()
+            if not student_row or not student_row[0] or not str(student_row[0]).strip():
+                return redirect(url_for("studentReg"))
             return redirect(url_for("studentDashboard"))
         if role == "Faculty":
             return redirect(url_for("faculty"))

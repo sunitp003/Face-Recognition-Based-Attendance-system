@@ -20,6 +20,9 @@ import zipfile
 import recognition #recognition.py
 import secrets
 import openpyxl
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 

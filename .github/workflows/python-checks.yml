@@ -1,18 +1,32 @@
-name: Python syntax checks
+name: Python checks and regression tests
 
 on:
   push:
-    branches: [main, "fix/**"]
+    branches: [main, "fix/**", "hardening/**"]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  compile:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config default-libmysqlclient-dev
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
       - name: Compile Python modules
         run: python -m compileall -q .
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v

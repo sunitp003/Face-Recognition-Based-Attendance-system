@@ -80,6 +80,7 @@ The hardened branch adds the following safeguards:
 ### Important deployment steps after upgrading
 
 1. Back up the MySQL database, student image datasets, and current models before deploying.
+2. For an existing database, run `migrations/002_password_hashes.sql` exactly once. Fresh databases created with the updated `database_creation.sql` do not need this migration.
 2. Set a persistent `SECRET_KEY` and database credentials through environment variables. Never use the Flask development server in production.
 3. Retrain **every batch/branch** after deploying this version. A model must have a matching `manifest.json`; legacy models without a manifest are intentionally rejected until retrained.
 4. Run the application over HTTPS and set `COOKIE_SECURE=1`.
@@ -88,4 +89,4 @@ The hardened branch adds the following safeguards:
 
 ### Security limitation that still needs an account migration
 
-The legacy account design still uses student roll numbers and faculty IDs as login credentials, and the original admin table stores plaintext passwords. This is not safe for production. Existing account records and the login UI need a coordinated password-reset/hash migration before public deployment. Do not expose this legacy login system to the internet.
+Existing deployments must run `migrations/002_password_hashes.sql` once after taking a database backup and before deploying the new login code. On each account's first successful legacy login, the credential is immediately stored as a Werkzeug password hash and the user is forced to choose a new password (minimum 12 characters). Admin plaintext passwords are cleared during migration on first successful login. New databases created from the updated schema already contain the hash columns. Do not skip this migration or expose the application publicly before it is complete.

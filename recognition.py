@@ -15,7 +15,6 @@ import numpy as np
 FACE_SIZE = (200, 200)
 DEFAULT_DISTANCE_THRESHOLD = 55.0
 DEFAULT_MIN_VOTES = 3
-DEFAULT_MIN_VOTE_RATIO = 0.60
 FRAME_SAMPLE_INTERVAL = 5
 
 
@@ -65,7 +64,6 @@ def recognize_attendance(root, video_path, branch, batch):
     detector = _face_cascade()
     threshold = float(os.getenv("LBPH_DISTANCE_THRESHOLD", DEFAULT_DISTANCE_THRESHOLD))
     min_votes = int(os.getenv("LBPH_MIN_VOTES", DEFAULT_MIN_VOTES))
-    min_ratio = float(os.getenv("LBPH_MIN_VOTE_RATIO", DEFAULT_MIN_VOTE_RATIO))
     votes = defaultdict(list)
     frame_index = 0
     today = datetime.now().strftime("%Y-%m-%d")
@@ -116,13 +114,12 @@ def recognize_attendance(root, video_path, branch, batch):
         # Require repeated independent observations, not one lucky frame.
         if len(distances) < min_votes:
             continue
-        vote_ratio = len(distances) / max(1, sum(len(v) for v in votes.values()))
         median_distance = float(np.median(distances))
-        if median_distance <= threshold and vote_ratio >= min_ratio:
+        if median_distance <= threshold:
             accepted.append(student_id)
         print(
             f"Candidate {student_id}: votes={len(distances)}, "
-            f"median_distance={median_distance:.1f}, ratio={vote_ratio:.2f}"
+            f"median_distance={median_distance:.1f}"
         )
 
     return sorted(accepted)

@@ -20,13 +20,13 @@ import openpyxl
 app = Flask(__name__)
 
 # Secure secret key for session management
-app.secret_key = secrets.token_urlsafe(32)
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # Define project root
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # Database connection
-conn = MySQLdb.connect(host="127.0.0.1", port=3306, user="root", password="Patil@123", db="attendance_database1")
+conn = MySQLdb.connect(\n    host=os.environ.get("DB_HOST", "127.0.0.1"),\n    port=int(os.environ.get("DB_PORT", "3306")),\n    user=os.environ.get("DB_USER", "root"),\n    password=os.environ.get("DB_PASSWORD", ""),\n    db=os.environ.get("DB_NAME", "attendance_database1"),\n)
 conn.autocommit(on=True)
 
 
@@ -799,7 +799,7 @@ def faculty():
 
             # ✅ Insert or update attendance records
             for student_id in all_students:
-                status = "Present" if any(str(student_id).endswith(str(recognized)) for recognized in recognized_students) else "Absent"
+                status = "Present" if str(student_id) in recognized_students else "Absent"
                 
                 cursor.execute("""
                     INSERT INTO attendance (student_ID, faculty_ID, batch, branch, year, subject_name, attendance_date, attendance_status)

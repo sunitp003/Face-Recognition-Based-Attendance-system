@@ -1,11 +1,7 @@
 Flask
-flask_ngrok
-Flask-Session
-flask_login
 opencv-contrib-python>=4.8,<5
 numpy
 pandas
 Pillow
 mysqlclient
-PyMySQL
 openpyxl

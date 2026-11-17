@@ -44,7 +44,7 @@ def _verify_model_bundle(model_path, labels_path, manifest_path):
             and manifest.get("trainer_sha256") == _sha256(model_path)
             and manifest.get("labels_sha256") == _sha256(labels_path)
         )
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, AttributeError):
         logging.exception("Could not validate recognition model manifest")
         return False
 

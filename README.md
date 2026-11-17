@@ -58,7 +58,7 @@ Lighting, pose, occlusion, camera quality and similar-looking faces affect recog
 
 - Do not expose the Flask development server or database directly to the internet.
 - Rotate any database password previously committed to source control.
-- The legacy login schema stores passwords in plain text / uses roll numbers as student passwords. Replace it with per-user password hashes before production deployment.
+- Existing deployments must run the password-hash migration described below before deploying the new login code.
 - Keep uploaded datasets, videos, trained models and database backups access-controlled; they contain sensitive biometric and attendance data.
 
 
@@ -81,12 +81,12 @@ The hardened branch adds the following safeguards:
 
 1. Back up the MySQL database, student image datasets, and current models before deploying.
 2. For an existing database, run `migrations/002_password_hashes.sql` exactly once. Fresh databases created with the updated `database_creation.sql` do not need this migration.
-2. Set a persistent `SECRET_KEY` and database credentials through environment variables. Never use the Flask development server in production.
-3. Retrain **every batch/branch** after deploying this version. A model must have a matching `manifest.json`; legacy models without a manifest are intentionally rejected until retrained.
-4. Run the application over HTTPS and set `COOKIE_SECURE=1`.
-5. Run the regression suite with `python -m unittest discover -s tests -v`.
-6. Test using held-out classroom videos and manually compare false accepts, false rejects, and missed detections before real attendance use.
+3. Set a persistent `SECRET_KEY` and database credentials through environment variables. Never use the Flask development server in production.
+4. Retrain **every batch/branch** after deploying this version. A model must have a matching `manifest.json`; legacy models without a manifest are intentionally rejected until retrained.
+5. Run the application over HTTPS and set `COOKIE_SECURE=1`.
+6. Run the regression suite with `python -m unittest discover -s tests -v`.
+7. Test using held-out classroom videos and manually compare false accepts, false rejects, and missed detections before real attendance use.
 
-### Security limitation that still needs an account migration
+### Account migration requirement
 
 Existing deployments must run `migrations/002_password_hashes.sql` once after taking a database backup and before deploying the new login code. On each account's first successful legacy login, the credential is immediately stored as a Werkzeug password hash and the user is forced to choose a new password (minimum 12 characters). Admin plaintext passwords are cleared during migration on first successful login. New databases created from the updated schema already contain the hash columns. Do not skip this migration or expose the application publicly before it is complete.

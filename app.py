@@ -1,5 +1,8 @@
 from flask import Flask, render_template, url_for, request, redirect,flash, jsonify, json,session
 from functools import wraps
+from werkzeug.utils import secure_filename
+import re
+import uuid
 from flask_session import Session
 from flask_login import logout_user
 from flask_ngrok import run_with_ngrok
@@ -25,6 +28,7 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # Define project root
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
 def role_required(*allowed_roles):
     """Protect routes using the authenticated role in the session."""

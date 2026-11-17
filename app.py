@@ -99,8 +99,19 @@ def _store_pending_attendance(data):
     token = uuid.uuid4().hex
     temporary_path = os.path.join(PENDING_DIR, token + ".tmp")
     final_path = os.path.join(PENDING_DIR, token + ".json")
+    # Remove abandoned review files so interrupted sessions do not accumulate.
+    now = time.time()
+    for filename in os.listdir(PENDING_DIR):
+        if not filename.endswith(".json"):
+            continue
+        stale_path = os.path.join(PENDING_DIR, filename)
+        try:
+            if now - os.path.getmtime(stale_path) > 7200:
+                os.remove(stale_path)
+        except OSError:
+            logging.warning("Could not clean expired pending review: %s", stale_path)
     payload = dict(data)
-    payload["created_at"] = time.time()
+    payload["created_at"] = now
     with open(temporary_path, "w", encoding="utf-8") as file:
         json.dump(payload, file)
     os.replace(temporary_path, final_path)
@@ -232,7 +243,8 @@ def index():
 # -------------------------------- LOGOUT FUNCTION -------------------------------- #
 @app.route("/logout")
 def logout():
-    session.clear()  # ✅ Clears session data
+    _clear_pending_attendance()
+    session.clear()
     return redirect(url_for("index"))
 
 # --------------------------------- Set Cache-Control Headers to Prevent Back Navigation ---------------------------------
@@ -278,8 +290,24 @@ def deleteStudent():
         roll_id = request.values.get("id", "").strip()
         cursor = conn.cursor()
         if entity == "Student":
+            cursor.execute(
+                "SELECT 1 FROM attendance WHERE student_ID=%s LIMIT 1", (roll_id,)
+            )
+            if cursor.fetchone():
+                return render_template(
+                    "admin_remove.html",
+                    msg="Cannot delete this student: historical attendance exists. Preserve the academic record.",
+                )
             cursor.execute("DELETE FROM student_login WHERE BINARY roll_no=%s", [roll_id])
         elif entity == "Faculty":
+            cursor.execute(
+                "SELECT 1 FROM attendance WHERE faculty_ID=%s LIMIT 1", (roll_id,)
+            )
+            if cursor.fetchone():
+                return render_template(
+                    "admin_remove.html",
+                    msg="Cannot delete this faculty account: historical attendance exists. Preserve the academic record.",
+                )
             cursor.execute("DELETE FROM faculty_login WHERE BINARY faculty_id=%s", [roll_id])
         else:
             return render_template("admin_remove.html", msg="Invalid entity type.")

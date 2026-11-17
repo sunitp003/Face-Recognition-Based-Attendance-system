@@ -94,6 +94,7 @@
         <h2>Edit Attendance Details</h2>
         
         <form action="/faculty/edit_attendance" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <label><b></b></label>
             <select name="batch" id="batchSelect" required>
                 <option value="" disabled selected>-- Select Batch --</option>

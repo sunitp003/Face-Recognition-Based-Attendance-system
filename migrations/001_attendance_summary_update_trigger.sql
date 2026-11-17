@@ -11,12 +11,6 @@ BEGIN
     IF OLD.attendance_status <> NEW.attendance_status THEN
         UPDATE attendance_summary
         SET
-            present_count = GREATEST(
-                0,
-                present_count
-                + (CASE WHEN NEW.attendance_status = 'Present' THEN 1 ELSE 0 END)
-                - (CASE WHEN OLD.attendance_status = 'Present' THEN 1 ELSE 0 END)
-            ),
             attendance_percentage = CASE
                 WHEN total_classes > 0 THEN ROUND(
                     GREATEST(
@@ -28,7 +22,13 @@ BEGIN
                     2
                 )
                 ELSE 0.00
-            END
+            END,
+            present_count = GREATEST(
+                0,
+                present_count
+                + (CASE WHEN NEW.attendance_status = 'Present' THEN 1 ELSE 0 END)
+                - (CASE WHEN OLD.attendance_status = 'Present' THEN 1 ELSE 0 END)
+            )
         WHERE student_ID = NEW.student_ID
           AND batch = NEW.batch
           AND branch = NEW.branch

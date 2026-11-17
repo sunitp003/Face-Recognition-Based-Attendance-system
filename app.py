@@ -53,7 +53,7 @@ conn = MySQLdb.connect(
     password=os.environ.get("DB_PASSWORD", ""),
     db=os.environ.get("DB_NAME", "attendance_database1"),
 )
-conn.autocommit(on=True)
+conn.autocommit(False)
 
 
 

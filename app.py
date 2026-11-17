@@ -293,7 +293,7 @@ def change_password():
     if request.method == "POST":
         password = request.form.get("new_password", "")
         confirmation = request.form.get("confirm_password", "")
-        if len(password) < 12 or not re.search(r"[A-Za-z]", password) or not re.search(r"\\d", password):
+        if len(password) < 12 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
             return render_template("change_password.html", msg="Use at least 12 characters with letters and numbers.")
         if password != confirmation:
             return render_template("change_password.html", msg="Passwords do not match.")

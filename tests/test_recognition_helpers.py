@@ -53,6 +53,10 @@ class RecognitionHelperTests(unittest.TestCase):
         self.assertEqual(processed.shape, (200, 200))
         self.assertEqual(processed.dtype, np.uint8)
 
+    def test_missing_model_manifest_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = recognition.recognize_attendance(directory, "missing.mp4", "it", "2024")
+            self.assertIsNone(result)
     def test_model_bundle_manifest_detects_tampering(self):
         with tempfile.TemporaryDirectory() as directory:
             model = os.path.join(directory, "trainer.yml")

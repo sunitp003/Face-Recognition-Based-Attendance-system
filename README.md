@@ -35,7 +35,7 @@ Set environment variables before starting the app:
 | `DB_USER` | MySQL user (default root) |
 | `DB_PASSWORD` | MySQL password |
 | `DB_NAME` | Database name (default attendance_database1) |
-| `LBPH_DISTANCE_THRESHOLD` | Maximum LBPH distance accepted (default 45; lower is stricter) |
+| `LBPH_DISTANCE_THRESHOLD` | Maximum LBPH distance accepted (default 42; lower is stricter) |
 | `LBPH_MIN_VOTES` | Minimum distinct one-second evidence windows (default 5; minimum 3) |
 
 Generate a persistent secret using `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Never commit real credentials.
@@ -72,6 +72,7 @@ The hardened branch adds the following safeguards:
 - Uploaded MP4 files are checked for an MP4 file-type marker and removed after recognition processing. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
 - Pending faculty reviews are stored server-side rather than in the browser cookie and expire after two hours. All workers must share the same persistent application filesystem for this temporary storage.
 - Excel downloads are generated in memory to avoid concurrent requests overwriting one shared filename.
+- Admin deletion is blocked when a student or faculty member has historical attendance, preventing accidental cascade deletion of academic records.
 - Training and recognition now measure brightness/blur before histogram equalization. Model and label files are paired with a SHA-256 manifest; incomplete or mismatched bundles are rejected.
 - Recognition threshold parsing is validated and the default is deliberately stricter. Five separate one-second windows are required by default. These are conservative starting values, not a promise of accuracy.
 - GitHub Actions compiles the project and runs unit regression tests.

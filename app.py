@@ -38,6 +38,13 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "0").lower() in {"1", "true", "yes"},
 )
+if _is_production:
+    if len(_secret_key) < 32:
+        raise RuntimeError("Production SECRET_KEY must contain at least 32 characters")
+    if not os.environ.get("DB_PASSWORD") or os.environ.get("DB_USER", "root").lower() == "root":
+        raise RuntimeError("Configure a dedicated DB_USER and non-empty DB_PASSWORD in production")
+    if not app.config["SESSION_COOKIE_SECURE"]:
+        raise RuntimeError("Set COOKIE_SECURE=1 when running behind HTTPS in production")
 
 def role_required(*allowed_roles):
     """Protect routes using the authenticated role in the session."""

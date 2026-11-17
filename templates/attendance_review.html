@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review Attendance</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;color:#1f2937}
+    main{max-width:850px;margin:32px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 4px 18px #0001}
+    h1{margin-top:0} .meta{color:#4b5563;margin-bottom:22px}
+    .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    section{border:1px solid #d1d5db;border-radius:10px;padding:16px}
+    .present{border-top:5px solid #16834a}.absent{border-top:5px solid #b45309}
+    li{padding:4px 0;font-family:monospace}
+    .warning{background:#fff7ed;padding:12px;border-radius:8px;margin:18px 0}
+    button{padding:12px 18px;border:0;border-radius:8px;cursor:pointer;font-weight:600}
+    .confirm{background:#176b43;color:white}.cancel{background:#e5e7eb;color:#111827}
+    form{display:inline-block;margin-right:10px}
+    @media(max-width:650px){main{margin:12px;padding:16px}.columns{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Review AI Attendance</h1>
+  <p class="meta">{{ batch }} · {{ branch|upper }} · {{ subject }} · {{ date }}</p>
+  <p class="warning"><strong>Important:</strong> AI recognition is only a suggestion. Check both lists against the classroom video before saving. Students in the second list will be recorded Absent if you confirm.</p>
+  <div class="columns">
+    <section class="present">
+      <h2>Recognized — proposed Present ({{ recognized_students|length }})</h2>
+      {% if recognized_students %}
+      <ul>{% for student in recognized_students %}<li>{{ student }}</li>{% endfor %}</ul>
+      {% else %}<p>No students recognized.</p>{% endif %}
+    </section>
+    <section class="absent">
+      <h2>Not recognized — proposed Absent ({{ absent_students|length }})</h2>
+      {% if absent_students %}
+      <ul>{% for student in absent_students %}<li>{{ student }}</li>{% endfor %}</ul>
+      {% else %}<p>Every registered student was recognized.</p>{% endif %}
+    </section>
+  </div>
+  <p>Confirm only after manually checking the video and correcting any mismatch.</p>
+  <form method="post" action="{{ url_for('confirm_attendance') }}">
+    <button class="confirm" type="submit">Confirm &amp; Save Attendance</button>
+  </form>
+  <form method="post" action="{{ url_for('cancel_attendance') }}">
+    <button class="cancel" type="submit">Cancel — Do Not Save</button>
+  </form>
+</main>
+</body>
+</html>

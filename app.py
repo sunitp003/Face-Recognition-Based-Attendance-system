@@ -409,6 +409,12 @@ def addRecord():
         password = request.values.get("password", "").strip()
         if not entity or not username or not password:
             return render_template("admin_add.html", msg="Please fill all fields.")
+        if len(username) > 50:
+            return render_template("admin_add.html", msg="Name must be 50 characters or fewer.")
+        if entity == "Student" and not re.fullmatch(r"[A-Za-z0-9_-]{1,15}", password):
+            return render_template("admin_add.html", msg="Student roll number must use 1–15 letters, digits, underscores or hyphens.")
+        if entity == "Faculty" and not re.fullmatch(r"[A-Za-z0-9_-]{1,25}", password):
+            return render_template("admin_add.html", msg="Faculty ID must use 1–25 letters, digits, underscores or hyphens.")
         cursor = conn.cursor()
 
         try:
@@ -495,6 +501,9 @@ def unzip_file(zip_src, dst_dir, roll_id):
 @role_required("Student")
 def studentReg():
     roll_id = str(session.get("user", ""))
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,15}", roll_id):
+        session.clear()
+        return redirect(url_for("index"))
     cursor = conn.cursor()
     cursor.execute("SELECT batch, branch FROM student_login WHERE roll_no=%s", (roll_id,))
     student = cursor.fetchone()

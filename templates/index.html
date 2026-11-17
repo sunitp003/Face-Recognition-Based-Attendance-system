@@ -104,6 +104,7 @@
         <div class="wrap"> <h3><b>{{error_msg}}</b></h3>
             <h2>Login</h2>
             <form action="/" method="POST" id="Login_form">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <b>Login As:</b> 
                 <input type="radio" name="loginAs" value= "Admin" required="required">
                 <label>Admin</label>

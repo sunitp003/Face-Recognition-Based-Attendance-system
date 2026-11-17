@@ -60,3 +60,31 @@ Lighting, pose, occlusion, camera quality and similar-looking faces affect recog
 - Rotate any database password previously committed to source control.
 - The legacy login schema stores passwords in plain text / uses roll numbers as student passwords. Replace it with per-user password hashes before production deployment.
 - Keep uploaded datasets, videos, trained models and database backups access-controlled; they contain sensitive biometric and attendance data.
+
+
+## Reliability and security hardening
+
+The hardened branch adds the following safeguards:
+
+- A request-scoped MySQL connection is opened only when a request needs the database and closed during Flask teardown. Do not share a connection between worker threads.
+- Every POST form carries a session-bound CSRF token. Keep the session secret stable across restarts and all application workers.
+- Production startup refuses to run without `SECRET_KEY`. Set `APP_ENV=production`, `SECRET_KEY` and `COOKIE_SECURE=1` behind HTTPS.
+- Uploaded MP4 files are checked for an MP4 file-type marker and removed after recognition processing. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
+- Pending faculty reviews are stored server-side rather than in the browser cookie and expire after two hours. All workers must share the same persistent application filesystem for this temporary storage.
+- Excel downloads are generated in memory to avoid concurrent requests overwriting one shared filename.
+- Training and recognition now measure brightness/blur before histogram equalization. Model and label files are paired with a SHA-256 manifest; incomplete or mismatched bundles are rejected.
+- Recognition threshold parsing is validated and the default is deliberately stricter. Five separate one-second windows are required by default. These are conservative starting values, not a promise of accuracy.
+- GitHub Actions compiles the project and runs unit regression tests.
+
+### Important deployment steps after upgrading
+
+1. Back up the MySQL database, student image datasets, and current models before deploying.
+2. Set a persistent `SECRET_KEY` and database credentials through environment variables. Never use the Flask development server in production.
+3. Retrain **every batch/branch** after deploying this version. A model must have a matching `manifest.json`; legacy models without a manifest are intentionally rejected until retrained.
+4. Run the application over HTTPS and set `COOKIE_SECURE=1`.
+5. Run the regression suite with `python -m unittest discover -s tests -v`.
+6. Test using held-out classroom videos and manually compare false accepts, false rejects, and missed detections before real attendance use.
+
+### Security limitation that still needs an account migration
+
+The legacy account design still uses student roll numbers and faculty IDs as login credentials, and the original admin table stores plaintext passwords. This is not safe for production. Existing account records and the login UI need a coordinated password-reset/hash migration before public deployment. Do not expose this legacy login system to the internet.

@@ -109,6 +109,7 @@
         <h2>Select Filters</h2>
 
         <form action="/student/view_attendance" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
 
 
             <label><b></b></label>

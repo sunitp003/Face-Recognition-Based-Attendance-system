@@ -35,7 +35,7 @@ Set environment variables before starting the app:
 | `DB_USER` | MySQL user (default root) |
 | `DB_PASSWORD` | MySQL password |
 | `DB_NAME` | Database name (default attendance_database1) |
-| `LBPH_DISTANCE_THRESHOLD` | Maximum LBPH distance accepted (default 45; lower is stricter) |
+| `LBPH_DISTANCE_THRESHOLD` | Maximum LBPH distance accepted (default 42; lower is stricter) |
 | `LBPH_MIN_VOTES` | Minimum distinct one-second evidence windows (default 5; minimum 3) |
 
 Generate a persistent secret using `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Never commit real credentials.
@@ -58,5 +58,35 @@ Lighting, pose, occlusion, camera quality and similar-looking faces affect recog
 
 - Do not expose the Flask development server or database directly to the internet.
 - Rotate any database password previously committed to source control.
-- The legacy login schema stores passwords in plain text / uses roll numbers as student passwords. Replace it with per-user password hashes before production deployment.
+- Existing deployments must run the password-hash migration described below before deploying the new login code.
 - Keep uploaded datasets, videos, trained models and database backups access-controlled; they contain sensitive biometric and attendance data.
+
+
+## Reliability and security hardening
+
+The hardened branch adds the following safeguards:
+
+- A request-scoped MySQL connection is opened only when a request needs the database and closed during Flask teardown. Do not share a connection between worker threads.
+- Every POST form carries a session-bound CSRF token. Keep the session secret stable across restarts and all application workers.
+- Production startup refuses to run without `SECRET_KEY`. Set `APP_ENV=production`, `SECRET_KEY` and `COOKIE_SECURE=1` behind HTTPS.
+- Uploaded MP4 files are checked for an MP4 file-type marker and removed after recognition processing. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
+- Pending faculty reviews are stored server-side rather than in the browser cookie and expire after two hours. All workers must share the same persistent application filesystem for this temporary storage.
+- Excel downloads are generated in memory to avoid concurrent requests overwriting one shared filename.
+- Admin deletion is blocked when a student or faculty member has historical attendance, preventing accidental cascade deletion of academic records.
+- Training and recognition now measure brightness/blur before histogram equalization. Model and label files are paired with a SHA-256 manifest; incomplete or mismatched bundles are rejected.
+- Recognition threshold parsing is validated and the default is deliberately stricter. Five separate one-second windows are required by default. These are conservative starting values, not a promise of accuracy.
+- GitHub Actions compiles the project and runs unit regression tests.
+
+### Important deployment steps after upgrading
+
+1. Back up the MySQL database, student image datasets, and current models before deploying.
+2. For an existing database, run `migrations/002_password_hashes.sql` exactly once. Fresh databases created with the updated `database_creation.sql` do not need this migration.
+3. Set a persistent `SECRET_KEY` and database credentials through environment variables. Never use the Flask development server in production.
+4. Retrain **every batch/branch** after deploying this version. A model must have a matching `manifest.json`; legacy models without a manifest are intentionally rejected until retrained.
+5. Run the application over HTTPS and set `COOKIE_SECURE=1`.
+6. Run the regression suite with `python -m unittest discover -s tests -v`.
+7. Test using held-out classroom videos and manually compare false accepts, false rejects, and missed detections before real attendance use.
+
+### Account migration requirement
+
+Existing deployments must run `migrations/002_password_hashes.sql` once after taking a database backup and before deploying the new login code. On each account's first successful legacy login, the credential is immediately stored as a Werkzeug password hash and the user is forced to choose a new password (minimum 12 characters). Admin plaintext passwords are cleared during migration on first successful login. New databases created from the updated schema already contain the hash columns. Do not skip this migration or expose the application publicly before it is complete.

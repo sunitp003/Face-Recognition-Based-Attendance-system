@@ -119,6 +119,7 @@
         <h2>Upload Attendance</h2>
         
         <form action="/faculty" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <input type="text" name="faculty_id" value="{{ facul_id }}" placeholder="Faculty ID" readonly aria-label="Signed-in Faculty ID">
             <input type="text" name="batch" placeholder="Batch (Ex. 2024)" pattern="\d{4}" title="Enter a valid batch year (e.g., 2024)" required>
             

@@ -27,6 +27,9 @@
     <div class="header"><h1>Verify Attendance Before Saving</h1></div>
     <main class="wrap">
         {% if msg %}<p class="error">{{ msg }}</p>{% endif %}
+        {% if recognition_failed %}
+        <p class="error">Recognition could not be completed (for example, the model may need retraining). No students were suggested. Verify the video and manually mark each present student; do not save an unreviewed all-absent list.</p>
+        {% endif %}
         <div class="notice">
             <strong>Important:</strong> Face recognition is only a suggestion. Checked students are
             model predictions, not guaranteed matches. Verify the complete list against the class
@@ -42,6 +45,7 @@
             <strong>Date:</strong> {{ attendance_date }}
         </div>
         <form method="POST" action="{{ url_for('confirm_attendance') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <table>
                 <thead>
                     <tr><th>Student Name</th><th>Roll Number</th><th>Mark Present</th></tr>

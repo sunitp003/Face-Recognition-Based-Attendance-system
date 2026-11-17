@@ -145,24 +145,24 @@ def recognize_attendance(root, video_path, branch, batch):
         recognizer.read(model_path)
     except Exception:
         logging.exception("Unable to load trained LBPH model")
-        return []
+        return None
 
     if not os.path.isfile(video_path):
         logging.error("Video not found: %s", video_path)
-        return []
+        return None
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logging.error("Unable to open uploaded video")
         cap.release()
-        return []
+        return None
 
     try:
         detector = _face_cascade()
     except Exception:
         logging.exception("Unable to initialize face detector")
         cap.release()
-        return []
+        return None
 
     threshold = _positive_env_float(
         "LBPH_DISTANCE_THRESHOLD", DEFAULT_DISTANCE_THRESHOLD, minimum=1.0
@@ -232,7 +232,7 @@ def recognize_attendance(root, video_path, branch, batch):
                     votes[student_id][time_window] = distance
     except Exception:
         logging.exception("Video processing failed; no recognition result will be trusted")
-        return []
+        return None
     finally:
         cap.release()
 

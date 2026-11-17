@@ -2,6 +2,7 @@ from flask import Flask, render_template, url_for, request, redirect, session, s
 from functools import wraps
 from werkzeug.utils import secure_filename
 from werkzeug.local import LocalProxy
+from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime
 import os
 import re
@@ -45,6 +46,8 @@ def role_required(*allowed_roles):
         def wrapped(*args, **kwargs):
             if session.get("role") not in allowed_roles or "user" not in session:
                 return redirect(url_for("index"))
+            if session.get("must_change_password") and request.endpoint != "change_password":
+                return redirect(url_for("change_password"))
             return view(*args, **kwargs)
         return wrapped
     return decorator
@@ -158,89 +161,157 @@ def index():
             return redirect(url_for("admin"))  # Redirect to Admin dashboard
 
     if request.method == "POST":
-        loginAs = request.values.get("loginAs")
-        username = request.values.get("username", "").strip()
-        password = request.values.get("password", "").strip()
+        login_as = request.form.get("loginAs", "")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
         if not username or not password:
             return render_template("index.html", error_msg="Please enter both username and password.")
         cursor = conn.cursor()
+        authenticated = None
+        must_change_password = False
 
-        if loginAs == "Student":
-            username_cap = username.capitalize()
-            cursor.execute("SELECT branch, batch FROM student_login WHERE student_name=%s AND roll_no=%s;", 
-                           (username_cap, password))
-            student = cursor.fetchone()
+        if login_as == "Student":
+            cursor.execute(
+                "SELECT roll_no, branch, batch, password_hash FROM student_login WHERE student_name=%s",
+                (username.capitalize(),),
+            )
+            for roll_no, branch, batch, stored_hash in cursor.fetchall():
+                valid = False
+                if stored_hash:
+                    try:
+                        valid = check_password_hash(stored_hash, password)
+                    except (ValueError, TypeError):
+                        logging.warning("Invalid password hash for student %s", roll_no)
+                else:
+                    valid = hmac.compare_digest(str(roll_no), password)
+                    if valid:
+                        cursor.execute(
+                            "UPDATE student_login SET password_hash=%s WHERE roll_no=%s AND password_hash IS NULL",
+                            (generate_password_hash(password), roll_no),
+                        )
+                        conn.commit()
+                        must_change_password = True
+                if valid:
+                    authenticated = ("Student", str(roll_no), branch, batch)
+                    break
 
-            if student:
-                branch, batch = student
-                session.clear()
-                session["user"] = password  # Store roll number in session
-                session["role"] = "Student"  # Store role
+        elif login_as == "Faculty":
+            cursor.execute(
+                "SELECT faculty_id, password_hash FROM faculty_login WHERE BINARY faculty_name=%s",
+                (username.capitalize(),),
+            )
+            for faculty_id, stored_hash in cursor.fetchall():
+                valid = False
+                if stored_hash:
+                    try:
+                        valid = check_password_hash(stored_hash, password)
+                    except (ValueError, TypeError):
+                        logging.warning("Invalid password hash for faculty %s", faculty_id)
+                else:
+                    valid = hmac.compare_digest(str(faculty_id), password)
+                    if valid:
+                        cursor.execute(
+                            "UPDATE faculty_login SET password_hash=%s WHERE faculty_id=%s AND password_hash IS NULL",
+                            (generate_password_hash(password), faculty_id),
+                        )
+                        conn.commit()
+                        must_change_password = True
+                if valid:
+                    authenticated = ("Faculty", str(faculty_id), None, None)
+                    break
 
-                if not branch or branch.strip() == "":
-                    return redirect(url_for("studentReg"))
-
-                cursor.execute("SELECT COUNT(DISTINCT attendance_date) FROM attendance WHERE batch=%s AND branch=%s;", 
-                               (batch, branch))
-                total_classes = cursor.fetchone()[0] or 0
-
-                cursor.execute("SELECT COUNT(DISTINCT attendance_date) FROM attendance WHERE student_ID=%s AND attendance_status='Present';", 
-                               [password])
-                present_days = cursor.fetchone()[0] or 0
-
-                absent_days = total_classes - present_days
-                return redirect(url_for('studentDashboard', user_id=password, present=present_days, absent=absent_days))
-            else:
-                return render_template("index.html", error_msg="❌ Invalid Username or Password")
-
-        elif loginAs == "Faculty":
-           # cursor.execute("SELECT * FROM faculty_login WHERE faculty_id=%s;", [username])
-            cursor.execute("SELECT * FROM faculty_login WHERE binary faculty_name=%s AND binary faculty_id=%s;",(username.capitalize(),password))
-            faculty = cursor.fetchone()
-
-            # if faculty:
-            #     session["user"] = username
-            #     session["role"] = "Faculty"  # Store faculty role
-            #     return redirect(url_for("faculty"))  # Redirect to Faculty Dashboard
-            # else:
-            #     return render_template("index.html", error_msg="❌ Invalid Faculty ID")
-            if faculty:
-                print(f"✅ Faculty ID {username} found!")
-                session.clear()
-                session["user"] = str(faculty[1])  # Store the actual faculty_id (foreign key)
-                session["role"] = "Faculty"  # Store role as Faculty
-                return redirect(url_for("faculty"))  # Redirect to Faculty Dashboard
-            else:
-                print(f"❌ Faculty ID {username} not found.")
-                return render_template("index.html", error_msg="❌ Invalid Faculty ID")
-
-
-
-
-
-
-
-
-
-
-
-        elif loginAs == "Admin":
-            cursor.execute("SELECT * FROM admin_login WHERE username=%s AND password=%s;", (username, password))
+        elif login_as == "Admin":
+            cursor.execute(
+                "SELECT password, password_hash FROM admin_login WHERE username=%s",
+                (username,),
+            )
             admin = cursor.fetchone()
-
             if admin:
-                session.clear()
-                session["user"] = username
-                session["role"] = "Admin"  # Store admin role
-                return redirect(url_for("admin"))  # Redirect to Admin Dashboard
-            else:
-                return render_template("index.html", error_msg="❌ Invalid Admin Credentials")
+                legacy_password, stored_hash = admin
+                if stored_hash:
+                    try:
+                        valid = check_password_hash(stored_hash, password)
+                    except (ValueError, TypeError):
+                        valid = False
+                else:
+                    valid = legacy_password is not None and hmac.compare_digest(str(legacy_password), password)
+                    if valid:
+                        cursor.execute(
+                            "UPDATE admin_login SET password_hash=%s, password=NULL WHERE username=%s AND password_hash IS NULL",
+                            (generate_password_hash(password), username),
+                        )
+                        conn.commit()
+                        must_change_password = True
+                if valid:
+                    authenticated = ("Admin", username, None, None)
+
+        if not authenticated:
+            return render_template("index.html", error_msg="Invalid username or password.")
+
+        role, user_id, branch, batch = authenticated
+        session.clear()
+        session["user"] = user_id
+        session["role"] = role
+        if must_change_password:
+            session["must_change_password"] = True
+            return redirect(url_for("change_password"))
+
+        if role == "Student":
+            if not branch or not str(branch).strip():
+                return redirect(url_for("studentReg"))
+            cursor.execute(
+                "SELECT COUNT(DISTINCT attendance_date) FROM attendance WHERE batch=%s AND branch=%s",
+                (batch, branch),
+            )
+            total_classes = cursor.fetchone()[0] or 0
+            cursor.execute(
+                "SELECT COUNT(DISTINCT attendance_date) FROM attendance WHERE student_ID=%s AND attendance_status=%s",
+                (user_id, "Present"),
+            )
+            present_days = cursor.fetchone()[0] or 0
+            return redirect(url_for("studentDashboard", user_id=user_id, present=present_days, absent=max(0, total_classes - present_days)))
+        if role == "Faculty":
+            return redirect(url_for("faculty"))
+        return redirect(url_for("admin"))
 
     return render_template("index.html")
 
 
 
 # -------------------------------- LOGOUT FUNCTION -------------------------------- #
+@app.route("/change-password", methods=["GET", "POST"])
+def change_password():
+    if "user" not in session or session.get("role") not in {"Admin", "Faculty", "Student"}:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        password = request.form.get("new_password", "")
+        confirmation = request.form.get("confirm_password", "")
+        if len(password) < 12 or not re.search(r"[A-Za-z]", password) or not re.search(r"\\d", password):
+            return render_template("change_password.html", msg="Use at least 12 characters with letters and numbers.")
+        if password != confirmation:
+            return render_template("change_password.html", msg="Passwords do not match.")
+        password_hash = generate_password_hash(password)
+        cursor = conn.cursor()
+        role = session["role"]
+        user_id = session["user"]
+        if role == "Admin":
+            cursor.execute("UPDATE admin_login SET password_hash=%s, password=NULL WHERE username=%s", (password_hash, user_id))
+        elif role == "Faculty":
+            cursor.execute("UPDATE faculty_login SET password_hash=%s WHERE faculty_id=%s", (password_hash, user_id))
+        else:
+            cursor.execute("UPDATE student_login SET password_hash=%s WHERE roll_no=%s", (password_hash, user_id))
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return render_template("change_password.html", msg="Password was not updated. Contact the administrator.")
+        conn.commit()
+        session.pop("must_change_password", None)
+        if role == "Student":
+            return redirect(url_for("studentDashboard"))
+        if role == "Faculty":
+            return redirect(url_for("faculty"))
+        return redirect(url_for("admin"))
+    return render_template("change_password.html")
+
 @app.route("/logout")
 def logout():
     _clear_pending_attendance()

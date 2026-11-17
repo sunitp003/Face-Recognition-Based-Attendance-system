@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Runtime/session data and biometric material
+instance/
+uploads/
+models/
+detected_faces/
+zip_uploads/
+attendance/*
+!attendance/.gitkeep
+dataset/*
+!dataset/.gitkeep
+Uploads/*
+!Uploads/.gitkeep
+Zip_uploads/*
+!Zip_uploads/.gitkeep
+
+# Generated exports and logs
+*.xlsx
+*.log

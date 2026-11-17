@@ -21,6 +21,9 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+# Copy .env.example to .env and set your local MySQL credentials and a persistent SECRET_KEY.
+# Windows: copy .env.example .env
+# macOS/Linux: cp .env.example .env
 python download_models.py
 ```
 

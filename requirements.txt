@@ -9,3 +9,4 @@ Pillow
 mysqlclient
 PyMySQL
 openpyxl
+python-dotenv>=1.0,<2

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Edit Attendance | Faculty</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Times New Roman', Times, serif;
+            background-color: #f5f5f5;
+        }
+
+        .mainHeading {
+            text-align: center;
+            background-color: #110f92;
+            color: white;
+            padding: 20px;
+        }
+
+        .navbar {
+            background-color: #000;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            font-size: 18px;
+            margin: 0 15px;
+        }
+
+        .wrap {
+            width: 30%;
+            margin: 40px auto;
+            padding: 20px;
+            background: white;
+            border: 5px solid rgb(204, 122, 16);
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .wrap h2 {
+            color: darkblue;
+        }
+
+        .wrap select, .wrap input[type="text"], .wrap input[type="date"] {
+            width: 90%;
+            height: 35px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            border: 1px solid rgb(25, 9, 119);
+            padding: 5px;
+            text-align: center;
+        }
+
+        .wrap .btn-submit {
+            padding: 10px;
+            width: 100%;
+            background-color: #55add6;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        .wrap .btn-submit:hover {
+            background-color: #3b92c4;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <a href="/faculty">Dashboard</a>
+        <a href="/">Logout</a>
+    </div>
+
+    <div class="mainHeading">
+        <h1>Edit Attendance</h1>
+    </div>
+
+    <div class="wrap">
+        {% if msg %}
+            <div class="message {% if 'error' in msg.lower() %}error{% endif %}">{{ msg }}</div>
+        {% endif %}
+
+        <h2>Edit Attendance Details</h2>
+        
+        <form action="/faculty/edit_attendance" method="POST">
+            <label><b></b></label>
+            <select name="batch" id="batchSelect" required>
+                <option value="" disabled selected>-- Select Batch --</option>
+            </select>
+
+            <label><b></b></label>
+            <select name="branch" id="branch" required>
+                <option value="">-- Select Branch --</option>
+                <option value="ce">CE</option>
+                <option value="it">IT</option>
+                <option value="me">ME</option>
+                <option value="ec">EC</option>
+                <option value="ee">EE</option>
+            </select>
+
+            <label><b></b></label>
+            <select name="year" id="year" required>
+                <option value="">-- Select Year --</option>
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+            </select>
+
+            <label><b></b></label>
+            <select name="subject_name" id="subject" required>
+                <option value="">-- Select Subject --</option>
+            </select>
+
+            <label><b></b></label>
+            <input type="text" name="fID" placeholder="Faculty ID" required>
+
+            <label><b></b></label>
+            <input type="text" name="s_id" placeholder="Student Roll Number" required>
+
+            <label><b></b></label><br>
+            <input type="radio" name="status" value="Present" required>
+            <label>Present</label>
+
+            <input type="radio" name="status" value="Absent" required>
+            <label>Absent</label>
+            <br><br>
+
+            <label><b> </b></label>
+            <input type="date" name="date" id="attendance_date" required>
+
+            <button type="submit" class="btn-submit">Update Attendance</button>
+        </form>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            let batchSelect = document.getElementById("batchSelect");
+            let subjectDropdown = document.getElementById("subject");
+            let yearDropdown = document.getElementById("year");
+            let branchDropdown = document.getElementById("branch");
+    
+            let currentYear = new Date().getFullYear();
+            for (let year = 2015; year <= currentYear; year++) {
+                let option = document.createElement("option");
+                option.value = year;
+                option.textContent = year;
+                batchSelect.appendChild(option);
+            }
+    
+            const subjects = {
+                "ce": { "1": ["M1", "M2", "Physics", "Chemistry"], "2": ["M3", "DSA", "COA", "DBMS"], "3": ["OS", "CN", "TOC", "SE"], "4": ["AI", "ML", "Cloud Computing", "Big Data"] },
+                "it": { "1": ["Maths", "Physics", "C Programming"], "2": ["Data Structures", "DBMS", "OOP"], "3": ["Software Engineering", "Networks", "Cyber Security"], "4": ["Cloud Computing", "Blockchain", "Big Data"] },
+                "me": { "1": ["Physics", "Chemistry", "Graphics"], "2": ["Thermodynamics", "Mechanics", "Fluid Mechanics"], "3": ["Heat Transfer", "Dynamics", "Manufacturing"], "4": ["Automobile", "Robotics", "Production"] }
+            };
+    
+            function updateSubjects() {
+                let branch = branchDropdown.value;
+                let year = yearDropdown.value;
+    
+                subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
+                
+                if (subjects[branch] && subjects[branch][year]) {
+                    subjects[branch][year].forEach(sub => {
+                        let option = document.createElement("option");
+                        option.value = sub;
+                        option.textContent = sub;
+                        subjectDropdown.appendChild(option);
+                    });
+                }
+            }
+    
+            // ✅ Update subjects when either Year or Branch is changed
+            yearDropdown.addEventListener("change", updateSubjects);
+            branchDropdown.addEventListener("change", updateSubjects);
+        });
+    </script>
+    
+</body>
+</html>

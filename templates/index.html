@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <title>Group Face Recognition Attendance System</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="">
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.10.2/jquery-ui.min.js"></script>
+        <style type="text/css">
+            body{
+                margin: 0;
+                padding: 0;
+                font-family: 'Times New Roman';
+                background-image: url();
+                background-repeat: no-repeat;
+                background-size: cover;
+                background-position: center;
+            }
+            a{
+                color: cornsilk;
+                text-decoration: none;
+            }
+            .mainHeading{
+                text-align: center;
+                background-color:#110f92;
+                color: #fff;
+                font-family: 'Times New Roman';
+                padding: 20px;
+            }
+            .table{
+                border-color: midnightblue;
+                margin-top: 30px;
+                margin-bottom: 0px;
+                font-family: 'Times New Roman';
+                font-style: normal;
+            }
+            .table tr, td{
+                border-left:firebrick;
+                text-align: left;
+                width: 200px;
+                font-size: 20px;
+            }
+            .table tr, td:hover{
+                transform: translateY(8px);
+            }
+            .wrap{
+                width: 412px;
+                overflow: hidden;
+                margin: auto;
+                text-align: center;
+                margin-top: 80px;
+                padding: 20px;
+                background-color: ghostwhite;
+                border:5px solid rgb(204, 122, 16);
+                border-radius: 20px;
+            }
+            .wrap h2{
+                text-align: center;
+                margin-bottom: 30px;
+                color:darkblue;
+            }
+            .wrap input[type="text"] {
+                text-align: center;
+                width:400px;
+                height: 20px;
+                margin-bottom: 15px;
+                border-radius: 15px;
+                border: 1px solid rgb(25, 9, 119);
+                padding: 5px;
+            }
+            .wrap .btn-submit{
+                padding: 5px;
+                width: 412px;
+                height:40px;
+                background-color: #55add6;
+                color: #fff;
+                border:0;
+                border-radius: 15px;
+                font-size: 18px;
+            }    
+            .wrap .select{
+                text-align: center;
+                width:400px;
+                height: 30px;
+                margin-bottom: 15px;
+                border-radius: 15px;
+                border: 1px solid rgb(25, 9, 119);
+                padding: 5px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="mainHeading">
+            <h1><b>SSBT Attendance Portal</b></h1>
+            <table class="table">
+                <tr>
+                    <td><a href="/about">About</a></td>
+                </tr>
+            </table>
+        </div>
+        <div class="wrap"> <h3><b>{{error_msg}}</b></h3>
+            <h2>Login</h2>
+            <form action="/" method="POST" id="Login_form">
+                <b>Login As:</b> 
+                <input type="radio" name="loginAs" value= "Admin" required="required">
+                <label>Admin</label>
+                <input type="radio" name="loginAs" value= "Student"  required="required">
+                <label>Student</label>
+                <input type="radio" name="loginAs" value= "Faculty"  required="required">
+                <label>Faculty</label>
+                <br><br>
+                <input type="text" name="username" placeholder="Username" required="required">
+                <br>
+                <input type="text" name="password" placeholder="Enter Password" required="required">
+                <br><br>
+                <button type="submit" class="btn-submit">Sign In</button>
+            </form>
+        </div>
+        <script async defer>
+             $(document).ready(function() {
+        function disableBack() { window.history.forward() }
+
+        window.onload = disableBack();
+        window.onpageshow = function(evt) { if (evt.persisted) disableBack() }
+    });
+        </script>
+    </body>

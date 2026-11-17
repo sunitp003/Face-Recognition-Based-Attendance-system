@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Student Dashboard | View Attendance</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"> 
+    
+    <!-- AnyChart Library -->
+    <script src="https://cdn.anychart.com/releases/8.0.1/js/anychart-core.min.js"></script>
+    <script src="https://cdn.anychart.com/releases/8.0.1/js/anychart-pie.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .mainHeading {
+            text-align: center;
+            background-color: #110f92;
+            color: white;
+            padding: 15px;
+            font-size: 1.5em;
+        }
+
+        .navbar {
+            background-color: #000;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            font-size: 1em;
+            margin: 0 10px;
+        }
+
+        .navbar a:hover {
+            text-decoration: underline;
+        }
+
+        .wrap {
+            width: 90%;
+            max-width: 800px;
+            margin: 30px auto;
+            text-align: center;
+        }
+
+        .form {
+            background: white;
+            padding: 20px;
+            width: 90%;
+            max-width: 500px;
+            margin: auto;
+            border: 2px solid #110f92;
+            border-radius: 15px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .form input, .form select {
+            width: 100%;
+            height: 40px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            border: 1px solid rgb(25, 9, 119);
+            padding: 5px;
+            text-align: center;
+        }
+
+        .form .btn-submit {
+            padding: 10px;
+            width: 100%;
+            background-color: #55add6;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        .form .btn-submit:hover {
+            background-color: #3b92c4;
+        }
+
+        .message {
+            font-size: 1em;
+            color: green;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .error {
+            color: red;
+        }
+
+        @media (max-width: 600px) {
+            .mainHeading {
+                font-size: 1.2em;
+                padding: 10px;
+            }
+            .form {
+                padding: 15px;
+            }
+            .navbar a {
+                font-size: 0.9em;
+                margin: 0 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <a href="/">Home</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+        <a href="/faculty">Dashboard</a>
+       
+    
+    </div>
+
+    <div class="mainHeading">
+        <h1>Student Dashboard</h1>
+    </div>
+
+    <div class="form">
+        {% if msg %}
+            <div class="message {% if 'error' in msg.lower() %}error{% endif %}">{{ msg }}</div>
+        {% endif %}
+        
+        <h2>View Attendance</h2>
+        <form action="/studentDashboard" method="POST">
+            <input type="text" name="roll" placeholder="Roll Number" required>
+            <select name="branch" id="branch" required>
+                <option value="">-- Select Branch --</option>
+                <option value="ce">CE</option>
+                <option value="it">IT</option>
+                <option value="me">ME</option>
+                <option value="ec">EC</option>
+                <option value="ee">EE</option>
+            </select>
+            <select name="year" id="year" required>
+                <option value="">-- Select Year --</option>
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+            </select>
+            
+            <label for="subject"><b></b></label>
+            <select name="subject" id="subject" required>
+                <option value="">-- Select Subject --</option>
+            </select>
+            
+            </select>
+            <input type="date" name="from" required>
+            <input type="date" name="to" required>
+            <button type="submit" class="btn-submit">View</button>
+        </form>
+    </div>
+
+    <div id="container" class="wrap"></div>
+    <script>
+        document.getElementById("year").addEventListener("change", function() {
+    const branch = document.getElementById("branch").value.toUpperCase(); // ✅ Convert to uppercase
+    const year = this.value;
+    const subjectDropdown = document.getElementById("subject");
+
+    const subjects = {
+        'CE': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["M3", "DSA", "COA", "DBMS"], '3': ["OS", "CN", "TOC", "SE"], '4': ["AI", "ML", "Cloud Computing", "Big Data"]},
+        'IT': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["DSA", "OOPS", "DBMS", "Computer Networks"], '3': ["OS", "Web Technologies", "AI", "Cybersecurity"], '4': ["Blockchain", "IoT", "Data Science", "DevOps"]},
+        'ME': {'1': ["Engineering Mechanics", "M1", "Physics", "Chemistry"], '2': ["Thermodynamics", "Fluid Mechanics", "SOM", "Material Science"], '3': ["Manufacturing", "IC Engines", "Robotics", "Heat Transfer"], '4': ["Automobile Engineering", "Mechatronics", "Advanced Robotics", "Computational Fluid Dynamics"]},
+        'EC': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["Digital Electronics", "Microprocessors", "Signals & Systems", "Communication Networks"], '3': ["Embedded Systems", "VLSI", "Wireless Communication", "DSP"], '4': ["IoT", "Optical Fiber Communication", "Radar Systems", "Satellite Communication"]}
+    };
+
+    subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
+    
+    if (subjects[branch] && subjects[branch][year]) { // ✅ Ensure branch & year exist
+        subjects[branch][year].forEach(sub => {
+            const option = document.createElement("option");
+            option.value = sub;
+            option.textContent = sub;
+            subjectDropdown.appendChild(option);
+        
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -921,7 +921,7 @@ def confirm_attendance():
             msg="Attendance could not be saved. No partial records were committed.",
         )
 
-    session.pop("pending_attendance", None)
+    _clear_pending_attendance()
     msg = (
         f"Attendance confirmed and saved. Present: {len(selected_present)} "
         f"of {len(student_rows)} students."

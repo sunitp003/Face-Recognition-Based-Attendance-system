@@ -119,7 +119,7 @@
         <h2>Upload Attendance</h2>
         
         <form action="/faculty" method="POST" enctype="multipart/form-data">
-            <input type="text" name="faculty_id" placeholder="Faculty ID" required>
+            <input type="text" name="faculty_id" value="{{ facul_id }}" placeholder="Faculty ID" readonly aria-label="Signed-in Faculty ID">
             <input type="text" name="batch" placeholder="Batch (Ex. 2024)" pattern="\d{4}" title="Enter a valid batch year (e.g., 2024)" required>
             
             <label for="branch"><b></b></label>
@@ -166,7 +166,8 @@
         'CE': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["M3", "DSA", "COA", "DBMS"], '3': ["OS", "CN", "TOC", "SE"], '4': ["AI", "ML", "Cloud Computing", "Big Data"]},
         'IT': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["DSA", "OOPS", "DBMS", "Computer Networks"], '3': ["OS", "Web Technologies", "AI", "Cybersecurity"], '4': ["Blockchain", "IoT", "Data Science", "DevOps"]},
         'ME': {'1': ["Engineering Mechanics", "M1", "Physics", "Chemistry"], '2': ["Thermodynamics", "Fluid Mechanics", "SOM", "Material Science"], '3': ["Manufacturing", "IC Engines", "Robotics", "Heat Transfer"], '4': ["Automobile Engineering", "Mechatronics", "Advanced Robotics", "Computational Fluid Dynamics"]},
-        'EC': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["Digital Electronics", "Microprocessors", "Signals & Systems", "Communication Networks"], '3': ["Embedded Systems", "VLSI", "Wireless Communication", "DSP"], '4': ["IoT", "Optical Fiber Communication", "Radar Systems", "Satellite Communication"]}
+        'EC': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["Digital Electronics", "Microprocessors", "Signals & Systems", "Communication Networks"], '3': ["Embedded Systems", "VLSI", "Wireless Communication", "DSP"], '4': ["IoT", "Optical Fiber Communication", "Radar Systems", "Satellite Communication"]},
+        'EE': {'1': ["Electrical Circuits", "Maths", "Physics"], '2': ["Machines", "Power Systems", "Electromagnetics"], '3': ["Control Systems", "Power Electronics", "Energy Management"], '4': ["Smart Grid", "Renewable Energy", "High Voltage Engineering"]}
     };
 
     subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";

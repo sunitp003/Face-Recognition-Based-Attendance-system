@@ -176,6 +176,7 @@
         
         <form action="/admin/addRecord" method="POST">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="radio-container">
                 <input type="radio" name="add_id" value="Student" id="student" required onclick="enableDepartment()">
                 <label for="student">Student</label>

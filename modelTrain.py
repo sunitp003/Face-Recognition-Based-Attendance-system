@@ -1,102 +1,106 @@
-"""Train an LBPH model using a consistent, deterministic face pipeline."""
+"""Build a student face-embedding gallery with OpenCV YuNet + SFace.
+
+Unlike the legacy LBPH model, SFace produces normalized embeddings and compares
+them with cosine similarity. Every enrollment photo must contain exactly one face.
+"""
 import json
 import os
-import shutil
 
 import cv2
 import numpy as np
 
-FACE_SIZE = (200, 200)
-SUPPORTED_IMAGES = (".jpg", ".jpeg", ".png")
+FACE_DETECTOR_PATH = os.path.join("models", "face_detection_yunet_2023mar.onnx")
+FACE_RECOGNIZER_PATH = os.path.join("models", "face_recognition_sface_2021dec.onnx")
+MIN_IMAGES_PER_STUDENT = 3
 
 
-def _detector():
-    cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+def _load_models(root):
+    detector_path = os.path.join(root, FACE_DETECTOR_PATH)
+    recognizer_path = os.path.join(root, FACE_RECOGNIZER_PATH)
+    missing = [p for p in (detector_path, recognizer_path) if not os.path.isfile(p)]
+    if missing:
+        raise FileNotFoundError(
+            "Face models missing. Run 'python download_models.py'. Missing: "
+            + ", ".join(missing)
+        )
+    detector = cv2.FaceDetectorYN.create(
+        detector_path, "", (320, 320), 0.85, 0.3, 5000
     )
-    if cascade.empty():
-        raise RuntimeError("Could not load OpenCV Haar face detector")
-    return cascade
+    recognizer = cv2.FaceRecognizerSF.create(recognizer_path, "")
+    return detector, recognizer
 
 
-def process_image(image_path, detector=None):
-    image = cv2.imread(image_path)
-    if image is None:
+def _extract_embedding(image, detector, recognizer):
+    if image is None or image.size == 0:
         return None
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    detector = detector or _detector()
-    faces = detector.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
-    )
-    # Multiple people in a registration photo make its label ambiguous.
-    if len(faces) != 1:
+    height, width = image.shape[:2]
+    detector.setInputSize((width, height))
+    _, faces = detector.detect(image)
+    if faces is None or len(faces) != 1:
         return None
-    x, y, w, h = faces[0]
-    face = gray[y:y + h, x:x + w]
-    face = cv2.resize(face, FACE_SIZE, interpolation=cv2.INTER_AREA)
-    return cv2.equalizeHist(face)
+    aligned = recognizer.alignCrop(image, faces[0])
+    feature = recognizer.feature(aligned)
+    vector = np.asarray(feature, dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(vector))
+    if not np.isfinite(norm) or norm == 0:
+        return None
+    return (vector / norm).tolist()
 
 
-def getImagesAndLabels(path):
-    """Return face arrays, numeric model labels, and an index-to-roll mapping."""
+def getImagesAndLabels(path, detector, recognizer):
+    """Return a mapping of exact roll numbers to normalized face embeddings."""
+    gallery = {}
     if not os.path.isdir(path):
-        return [], [], {}
+        return gallery
 
-    detector = _detector()
-    faces, labels, label_map = [], [], {}
-    student_dirs = sorted(
-        (entry for entry in os.scandir(path) if entry.is_dir()),
-        key=lambda entry: entry.name
-    )
-    next_label = 0
-    for student_dir in student_dirs:
+    for student_dir in sorted(os.scandir(path), key=lambda item: item.name):
+        if not student_dir.is_dir():
+            continue
         roll_no = student_dir.name.strip()
         if not roll_no:
             continue
-        student_faces = []
+        embeddings = []
         for filename in sorted(os.listdir(student_dir.path)):
-            if not filename.lower().endswith(SUPPORTED_IMAGES):
+            if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
                 continue
-            face = process_image(os.path.join(student_dir.path, filename), detector)
-            if face is not None:
-                student_faces.append(face)
-        # Do not create a model class from one or two accidental detections.
-        if len(student_faces) < 3:
-            print(f"Skipping {roll_no}: only {len(student_faces)} usable images (need 3).")
-            continue
-        label_map[str(next_label)] = roll_no
-        faces.extend(student_faces)
-        labels.extend([next_label] * len(student_faces))
-        next_label += 1
-
-    return faces, labels, label_map
+            image = cv2.imread(os.path.join(student_dir.path, filename))
+            embedding = _extract_embedding(image, detector, recognizer)
+            if embedding is not None:
+                embeddings.append(embedding)
+        if len(embeddings) >= MIN_IMAGES_PER_STUDENT:
+            gallery[roll_no] = embeddings
+        else:
+            print(
+                f"Skipping {roll_no}: {len(embeddings)} valid single-face images; "
+                f"need at least {MIN_IMAGES_PER_STUDENT}."
+            )
+    return gallery
 
 
 def TrainImages(root, batch, branch):
     uploads_path = os.path.join(root, "uploads", str(batch), str(branch))
-    model_dir = os.path.join(root, "models", str(batch), str(branch))
     if not os.path.isdir(uploads_path):
         print(f"Training folder not found: {uploads_path}")
         return 0
-
     try:
-        faces, labels, label_map = getImagesAndLabels(uploads_path)
-        if not faces or not label_map:
-            print("No student has at least 3 valid, single-face training images.")
+        detector, recognizer = _load_models(root)
+        gallery = getImagesAndLabels(uploads_path, detector, recognizer)
+        if not gallery:
+            print("No students have enough valid enrollment images.")
             return 0
-
-        recognizer = cv2.face.LBPHFaceRecognizer_create(
-            radius=1, neighbors=8, grid_x=8, grid_y=8
-        )
-        recognizer.train(faces, np.asarray(labels, dtype=np.int32))
+        model_dir = os.path.join(root, "models", str(batch), str(branch))
         os.makedirs(model_dir, exist_ok=True)
-        recognizer.save(os.path.join(model_dir, "trainer.yml"))
-        with open(os.path.join(model_dir, "labels.json"), "w", encoding="utf-8") as file:
-            json.dump(label_map, file, indent=2)
+        output_path = os.path.join(model_dir, "face_embeddings.json")
+        temporary_path = output_path + ".tmp"
+        with open(temporary_path, "w", encoding="utf-8") as file:
+            json.dump(
+                {"model": "OpenCV-SFace", "version": 1, "students": gallery},
+                file,
+                separators=(",", ":"),
+            )
+        os.replace(temporary_path, output_path)
         print(
-            f"Model trained: {len(faces)} images, {len(label_map)} students. "
-            f"Saved to {model_dir}"
+            f"Created SFace gallery for {len(gallery)} students at {output_path}"
         )
         return 1
     except Exception as exc:
@@ -106,7 +110,7 @@ def TrainImages(root, batch, branch):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Train attendance face model")
+    parser = argparse.ArgumentParser(description="Build an SFace attendance gallery")
     parser.add_argument("root")
     parser.add_argument("batch")
     parser.add_argument("branch")

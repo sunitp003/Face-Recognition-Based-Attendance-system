@@ -176,7 +176,7 @@ def admin():
             return render_template("dashB_admin.html", msg="Invalid batch or branch.")
         if batch and branch:
             ret = modelTrain.TrainImages(APP_ROOT, batch, branch)
-            msg = "Model Trained Successfully" if ret == 1 else "No images found!"
+            msg = ("Model Trained Successfully" if ret == 1 else "Training failed. Each student needs at least 5 clear, unique, single-face images.")
         else:
             msg = "Please provide batch and branch."
         return render_template("dashB_admin.html", msg=msg)
@@ -266,7 +266,7 @@ def unzip_file(zip_src, dst_dir, roll_id):
                 total_bytes += item.file_size
                 if total_bytes > 40 * 1024 * 1024 or saved >= 200:
                     break
-                destination = os.path.join(extract_to, filename)
+                destination = os.path.join(extract_to, f"{saved + 1}_{filename}")
                 with archive.open(item) as source, open(destination, "wb") as target:
                     shutil.copyfileobj(source, target)
                 saved += 1

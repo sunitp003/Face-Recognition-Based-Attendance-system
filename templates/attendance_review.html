@@ -43,6 +43,7 @@
         </div>
         <form method="POST" action="{{ url_for('confirm_attendance') }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <table>
                 <thead>
                     <tr><th>Student Name</th><th>Roll Number</th><th>Mark Present</th></tr>

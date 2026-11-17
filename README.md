@@ -10,7 +10,7 @@ A Flask + MySQL attendance application using OpenCV YuNet face detection and SFa
 4. SFace creates normalized face embeddings, stored in `models/<batch>/<branch>/face_embeddings.json`. Student IDs are stored as exact roll-number strings; no partial or suffix matching is used.
 5. Faculty uploads a classroom video. YuNet detects faces and SFace compares each embedding with the enrollment gallery using cosine similarity.
 6. A match must pass both a similarity threshold and a best-vs-second-best margin, and must recur across multiple sampled frames before the student is marked Present.
-7. If no confident identities are found, attendance is not written. The system does not silently mark the entire class Absent.
+7. Faculty reviews the recognized and not-recognized student lists on a confirmation page before any attendance rows are written. If no confident identities are found, attendance is not written.
 
 ## Setup
 
@@ -53,7 +53,7 @@ For each student, use 10–20 varied photos where possible: front-facing and sli
 
 SFace embeddings are generally more robust to pose and lighting variation than the old LBPH appearance classifier, but no threshold guarantees zero false matches. The defaults are intentionally conservative and may reject some genuine faces. Calibrate using separate held-out classroom videos from the actual camera, lighting, seating distance, and student population. Measure false accepts and false rejects separately. Raise the similarity threshold and/or margin to reduce false attendance; lowering them may increase false positives.
 
-Faculty must supervise the generated attendance. Lighting, pose, occlusion, camera quality, very small faces, and similar-looking faces still affect results. This project does not implement liveness/anti-spoofing, so photo or replay attacks are not prevented.
+Faculty must manually review and confirm the proposed Present/Absent lists before the database is updated. Lighting, pose, occlusion, camera quality, very small faces, and similar-looking faces still affect results. This project does not implement liveness/anti-spoofing, so photo or replay attacks are not prevented.
 
 ## Operational notes
 

@@ -845,6 +845,26 @@ def confirm_attendance():
             msg="Invalid student selection. Please review again.",
         )
 
+    if pending.get("recognition_failed") and not selected_present:
+        return render_template(
+            "attendance_review.html",
+            students=[
+                {
+                    "roll_no": str(row[0]),
+                    "student_name": str(row[1]),
+                    "suggested": False,
+                }
+                for row in student_rows
+            ],
+            batch=batch,
+            branch=branch,
+            subject=subject,
+            attendance_date=date_value,
+            detected_count=0,
+            recognition_failed=True,
+            msg="Recognition failed. Mark the present students manually before saving.",
+        )
+
     cursor.execute(
         """
         SELECT 1 FROM attendance
@@ -854,7 +874,7 @@ def confirm_attendance():
         (date_value, batch, branch, subject),
     )
     if cursor.fetchone():
-        session.pop("pending_attendance", None)
+        _clear_pending_attendance()
         return render_template(
             "dashB_faculty.html",
             msg="Attendance already exists for this date, batch, branch and subject.",

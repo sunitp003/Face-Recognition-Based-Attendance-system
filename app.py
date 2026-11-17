@@ -273,44 +273,6 @@ def unzip_file(zip_src, dst_dir, roll_id):
     except (zipfile.BadZipFile, OSError):
         return None
     return extract_to if saved else None
-
-
-
-
-
-
-
-
-
-def unzip_file(zip_src, dst_dir, roll_id):
-    """Safely extract a bounded set of image files for one student."""
-    if not zipfile.is_zipfile(zip_src):
-        return None
-    extract_to = os.path.join(dst_dir, str(roll_id))
-    os.makedirs(extract_to, exist_ok=True)
-    allowed = (".jpg", ".jpeg", ".png")
-    total_bytes = 0
-    saved = 0
-    try:
-        with zipfile.ZipFile(zip_src, "r") as archive:
-            for item in archive.infolist():
-                if item.is_dir():
-                    continue
-                filename = secure_filename(os.path.basename(item.filename))
-                if not filename or not filename.lower().endswith(allowed):
-                    continue
-                if item.file_size > 8 * 1024 * 1024:
-                    continue
-                total_bytes += item.file_size
-                if total_bytes > 40 * 1024 * 1024 or saved >= 200:
-                    break
-                destination = os.path.join(extract_to, filename)
-                with archive.open(item) as source, open(destination, "wb") as target:
-                    shutil.copyfileobj(source, target)
-                saved += 1
-    except (zipfile.BadZipFile, OSError):
-        return None
-    return extract_to if saved else None
 @app.route("/studentReg", methods=["GET", "POST"])
 @role_required("Student")
 def studentReg():
@@ -721,6 +683,13 @@ def confirm_attendance():
         f"of {len(student_rows)} students."
     )
     return render_template("dashB_faculty.html", msg=msg, facul_id=fac_id)
+
+
+@app.route("/faculty/cancel_attendance_review", methods=["GET"])
+@role_required("Faculty")
+def cancel_attendance_review():
+    session.pop("pending_attendance", None)
+    return redirect(url_for("faculty"))
 
 
 

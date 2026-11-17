@@ -16,6 +16,14 @@ MIN_BRIGHTNESS = 35.0
 MAX_BRIGHTNESS = 220.0
 
 
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _detector():
     cascade = cv2.CascadeClassifier(
         cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -31,11 +39,14 @@ def process_image(image_path, detector=None):
     if image is None:
         return None
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
+    raw_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    detection_gray = cv2.equalizeHist(raw_gray)
     detector = detector or _detector()
     faces = detector.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=6, minSize=(MIN_FACE_SIZE, MIN_FACE_SIZE)
+        detection_gray,
+        scaleFactor=1.1,
+        minNeighbors=6,
+        minSize=(MIN_FACE_SIZE, MIN_FACE_SIZE),
     )
 
     # Never assign a training image containing multiple faces to one student.
@@ -43,10 +54,11 @@ def process_image(image_path, detector=None):
         return None
 
     x, y, width, height = faces[0]
-    face = gray[y:y + height, x:x + width]
+    face = raw_gray[y:y + height, x:x + width]
     if face.size == 0:
         return None
 
+    # Measure source lighting and blur before histogram equalization.
     brightness = float(np.mean(face))
     blur_variance = float(cv2.Laplacian(face, cv2.CV_64F).var())
     if not (MIN_BRIGHTNESS <= brightness <= MAX_BRIGHTNESS):
@@ -138,14 +150,27 @@ def TrainImages(root, batch, branch):
         labels_path = os.path.join(model_dir, "labels.json")
         temporary_model = os.path.join(model_dir, "trainer.tmp.yml")
         temporary_labels = os.path.join(model_dir, "labels.tmp.json")
+        manifest_path = os.path.join(model_dir, "manifest.json")
+        temporary_manifest = os.path.join(model_dir, "manifest.tmp.json")
 
         recognizer.save(temporary_model)
         with open(temporary_labels, "w", encoding="utf-8") as file:
             json.dump(label_map, file, indent=2)
 
-        # Keep the previous trained model intact if preprocessing/training fails.
+        # Publish manifest last; recognition fails closed on mixed bundles.
+        manifest = {
+            "format_version": 1,
+            "trainer_sha256": _file_sha256(temporary_model),
+            "labels_sha256": _file_sha256(temporary_labels),
+            "student_count": len(label_map),
+            "image_count": len(faces),
+        }
+        with open(temporary_manifest, "w", encoding="utf-8") as file:
+            json.dump(manifest, file, indent=2)
+
         os.replace(temporary_model, model_path)
         os.replace(temporary_labels, labels_path)
+        os.replace(temporary_manifest, manifest_path)
 
         print(
             f"Model trained: {len(faces)} images, {len(label_map)} students. "
@@ -154,7 +179,7 @@ def TrainImages(root, batch, branch):
         return 1
     except Exception as exc:
         print(f"Training failed: {exc}")
-        for filename in ("trainer.tmp.yml", "labels.tmp.json"):
+        for filename in ("trainer.tmp.yml", "labels.tmp.json", "manifest.tmp.json"):
             temporary_path = os.path.join(model_dir, filename)
             if os.path.exists(temporary_path):
                 try:

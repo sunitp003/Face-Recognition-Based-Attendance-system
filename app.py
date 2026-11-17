@@ -573,54 +573,154 @@ def faculty():
             print(f"Recognition failed: {exc}")
             recognized = []
 
-        # A model can contain stale labels. Never write an identity that is not
-        # registered in the selected batch/branch.
-        recognized_students = set(map(str, recognized)) & all_students
-        if not recognized_students:
-            return render_template(
-                "dashB_faculty.html",
-                msg=(
-                    "No verified student identity matched this batch. "
-                    "Attendance was NOT saved; check the video and retrain the model."
-                ),
-                facul_id=fac_id,
-            )
-
-        try:
-            conn.begin()
-            for student_id in sorted(all_students):
-                status = "Present" if student_id in recognized_students else "Absent"
-                cursor.execute(
-                    """
-                    INSERT INTO attendance
-                    (student_ID, faculty_ID, batch, branch, year, subject_name,
-                     attendance_date, attendance_status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE attendance_status=VALUES(attendance_status)
-                    """,
-                    (
-                        student_id, fac_id, batch, branch, year, subject,
-                        date_value, status,
-                    ),
-                )
-            conn.commit()
-        except Exception as exc:
-            conn.rollback()
-            print(f"Attendance transaction failed: {exc}")
-            return render_template(
-                "dashB_faculty.html",
-                msg="Attendance could not be saved. No partial records were committed.",
-                facul_id=fac_id,
-            )
-
-        msg = (
-            f"Attendance saved. Verified Present: {len(recognized_students)} "
-            f"of {len(all_students)} students."
-        )
-        print(msg)
-        return render_template("dashB_faculty.html", msg=msg, facul_id=fac_id)
+        # Do not save attendance here. Detection is only a suggestion; a faculty
+        # member must verify the complete present list before any DB write.
+        recognized_students = sorted(set(map(str, recognized)) & all_students)
+        session["pending_attendance"] = {
+            "faculty_id": fac_id,
+            "batch": batch,
+            "branch": branch,
+            "year": year,
+            "subject": subject,
+            "date": date_value,
+            "suggested_present": recognized_students,
+        }
+        return redirect(url_for("confirm_attendance"))
 
     return render_template("dashB_faculty.html", facul_id=session.get("user"))
+
+
+@app.route("/faculty/confirm_attendance", methods=["GET", "POST"])
+@role_required("Faculty")
+def confirm_attendance():
+    pending = session.get("pending_attendance")
+    fac_id = str(session.get("user", ""))
+    if not pending or pending.get("faculty_id") != fac_id:
+        return redirect(url_for("faculty"))
+
+    batch = pending.get("batch", "")
+    branch = pending.get("branch", "")
+    date_value = pending.get("date", "")
+    subject = pending.get("subject", "")
+
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT roll_no, student_name FROM student_login
+        WHERE batch=%s AND branch=%s ORDER BY roll_no
+        """,
+        (batch, branch),
+    )
+    student_rows = cursor.fetchall()
+    if not student_rows:
+        session.pop("pending_attendance", None)
+        return render_template(
+            "dashB_faculty.html",
+            msg="No registered students found. Attendance was not saved.",
+            facul_id=fac_id,
+        )
+
+    if request.method == "GET":
+        students = [
+            {
+                "roll_no": str(row[0]),
+                "student_name": str(row[1]),
+                "suggested": str(row[0]) in pending.get("suggested_present", []),
+            }
+            for row in student_rows
+        ]
+        return render_template(
+            "attendance_review.html",
+            students=students,
+            batch=batch,
+            branch=branch,
+            subject=subject,
+            attendance_date=date_value,
+            detected_count=len(pending.get("suggested_present", [])),
+        )
+
+    selected_present = set(request.form.getlist("present_ids"))
+    valid_ids = {str(row[0]) for row in student_rows}
+    if not selected_present.issubset(valid_ids):
+        return render_template(
+            "attendance_review.html",
+            students=[
+                {
+                    "roll_no": str(row[0]),
+                    "student_name": str(row[1]),
+                    "suggested": str(row[0]) in pending.get("suggested_present", []),
+                }
+                for row in student_rows
+            ],
+            batch=batch,
+            branch=branch,
+            subject=subject,
+            attendance_date=date_value,
+            detected_count=len(pending.get("suggested_present", [])),
+            msg="Invalid student selection. Please review again.",
+        )
+
+    cursor.execute(
+        """
+        SELECT 1 FROM attendance
+        WHERE attendance_date=%s AND batch=%s AND branch=%s AND subject_name=%s
+        LIMIT 1
+        """,
+        (date_value, batch, branch, subject),
+    )
+    if cursor.fetchone():
+        session.pop("pending_attendance", None)
+        return render_template(
+            "dashB_faculty.html",
+            msg="Attendance already exists for this date, batch, branch and subject.",
+            facul_id=fac_id,
+        )
+
+    try:
+        conn.begin()
+        for row in student_rows:
+            student_id = str(row[0])
+            status = "Present" if student_id in selected_present else "Absent"
+            cursor.execute(
+                """
+                INSERT INTO attendance
+                (student_ID, faculty_ID, batch, branch, year, subject_name,
+                 attendance_date, attendance_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    student_id, fac_id, batch, branch, pending["year"],
+                    subject, date_value, status,
+                ),
+            )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        print(f"Attendance transaction failed: {exc}")
+        return render_template(
+            "attendance_review.html",
+            students=[
+                {
+                    "roll_no": str(row[0]),
+                    "student_name": str(row[1]),
+                    "suggested": str(row[0]) in pending.get("suggested_present", []),
+                }
+                for row in student_rows
+            ],
+            batch=batch,
+            branch=branch,
+            subject=subject,
+            attendance_date=date_value,
+            detected_count=len(pending.get("suggested_present", [])),
+            msg="Attendance could not be saved. No partial records were committed.",
+        )
+
+    session.pop("pending_attendance", None)
+    msg = (
+        f"Attendance confirmed and saved. Present: {len(selected_present)} "
+        f"of {len(student_rows)} students."
+    )
+    return render_template("dashB_faculty.html", msg=msg, facul_id=fac_id)
 
 
 

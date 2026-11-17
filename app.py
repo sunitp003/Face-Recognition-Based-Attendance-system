@@ -1,4 +1,4 @@
-from flask import Flask, render_template, url_for, request, redirect, session, send_file, g
+from flask import Flask, render_template, url_for, request, redirect, session, send_file, g, abort
 from functools import wraps
 from werkzeug.utils import secure_filename
 from werkzeug.local import LocalProxy
@@ -10,6 +10,7 @@ import shutil
 import zipfile
 import secrets
 import logging
+import hmac
 import json
 import time
 from io import BytesIO
@@ -47,6 +48,26 @@ def role_required(*allowed_roles):
             return view(*args, **kwargs)
         return wrapped
     return decorator
+
+
+def csrf_token():
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+@app.context_processor
+def inject_csrf_token():
+    return {"csrf_token": csrf_token}
+
+@app.before_request
+def protect_post_requests():
+    if request.method == "POST":
+        expected = session.get("_csrf_token", "")
+        supplied = request.form.get("_csrf_token", "") or request.headers.get("X-CSRF-Token", "")
+        if not expected or not supplied or not hmac.compare_digest(str(expected), str(supplied)):
+            abort(400, description="Invalid or missing CSRF token")
 
 
 # Request-scoped connections prevent concurrent requests sharing one connection.

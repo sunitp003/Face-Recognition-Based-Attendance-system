@@ -131,7 +131,7 @@ def recognize_attendance(root, video_path, branch, batch):
             "Recognition model bundle is missing or inconsistent. "
             "Retrain this batch/branch before taking attendance."
         )
-        return []
+        return None
 
     try:
         with open(labels_path, "r", encoding="utf-8") as file:

@@ -1,4 +1,5 @@
 from flask import Flask, render_template, url_for, request, redirect,flash, jsonify, json,session
+from functools import wraps
 from flask_session import Session
 from flask_login import logout_user
 from flask_ngrok import run_with_ngrok
@@ -24,6 +25,18 @@ app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # Define project root
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+def role_required(*allowed_roles):
+    """Protect routes using the authenticated role in the session."""
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if session.get("role") not in allowed_roles or "user" not in session:
+                return redirect(url_for("index"))
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
+
 
 # Database connection
 conn = MySQLdb.connect(\n    host=os.environ.get("DB_HOST", "127.0.0.1"),\n    port=int(os.environ.get("DB_PORT", "3306")),\n    user=os.environ.get("DB_USER", "root"),\n    password=os.environ.get("DB_PASSWORD", ""),\n    db=os.environ.get("DB_NAME", "attendance_database1"),\n)
@@ -150,6 +163,7 @@ def set_response_headers(response):
 # ----------------------------- ADMIN DASHBOARD ----------------------------- #
 
 @app.route("/admin/", methods=["POST", "GET"])
+@role_required("Admin")
 def admin():
     if request.method == "POST":
         batch = request.values.get("batch").strip()
@@ -163,6 +177,7 @@ def admin():
     return render_template("dashB_admin.html")
 
 @app.route("/admin/delete", methods=["POST", "GET"])
+@role_required("Admin")
 def deleteStudent():
     if request.method == "POST":
         entity = request.values.get("remove_id").strip()
@@ -182,6 +197,7 @@ def deleteStudent():
     return render_template("admin_remove.html")
 
 @app.route("/admin/addRecord", methods=["POST", "GET"])
+@role_required("Admin")
 def addRecord():
     if request.method == "POST":
         entity = request.values.get("add_id").strip()
@@ -314,7 +330,8 @@ def unzip_file(zip_src, dst_dir, roll_id):
 
 
 # @app.route("/studentReg", methods=["GET", "POST"])
-# def studentReg():
+# @role_required("Student")
+def studentReg():
 #     roll_id = session.get("user")  # ✅ Ensure user session exists
 #     cursor = conn.cursor()
 
@@ -327,7 +344,7 @@ def unzip_file(zip_src, dst_dir, roll_id):
 #         return redirect(url_for("studentDashboard", user_id=roll_id))
 
 #     if request.method == "POST":
-#         roll_id = request.values.get("roll_id", "").strip()
+#         roll_id = session.get("user")  # Trust only the authenticated student identity
 #         branch = request.form.get("branch", "").strip()  
 #         batch = request.values.get("batch", "").strip()
 #         zip_file = request.files.get("file")
@@ -389,7 +406,8 @@ def unzip_file(zip_src, dst_dir, roll_id):
 
 
 # @app.route("/studentDashboard", methods=["GET", "POST"])
-# def studentDashboard():
+# @role_required("Student")
+def studentDashboard():
 #     if "user" not in session:  
 #         return redirect(url_for("index"))
 
@@ -678,6 +696,7 @@ def studentDashboard():
 
 
 @app.route("/student/view_attendance", methods=["GET", "POST"])
+@role_required("Student")
 def student_view_attendance():
     if "user" not in session:
         return redirect(url_for("index"))
@@ -748,9 +767,10 @@ def student_view_attendance():
 # ------------------------------------------FACULTY REGISTRATION------------------------------------------------
 
 @app.route("/faculty", methods=["GET", "POST"])
+@role_required("Faculty")
 def faculty():
     if request.method == "POST":
-        fac_id = request.values.get("faculty_id")
+        fac_id = session.get("user")  # Trust only the authenticated faculty identity
         batch = request.values.get("batch")
         branch = request.values.get("branch")
         year = request.values.get("year")
@@ -822,6 +842,7 @@ def faculty():
 # -------------------------------- Faculty View Attendance  -------------------------------- #
 
 @app.route("/faculty/view_attendance", methods=["GET", "POST"])
+@role_required("Faculty")
 def faculty_view():
     if request.method == "POST":
         batch = request.form.get("batch", "").strip()
@@ -877,6 +898,7 @@ def faculty_view():
 
 
 @app.route("/faculty/edit_attendance", methods=["GET", "POST"])
+@role_required("Faculty")
 def edit_attendance():
     if request.method == "POST":
         try:
@@ -884,7 +906,7 @@ def edit_attendance():
             branch = request.form.get("branch", "").strip()
             year = request.form.get("year", "").strip()
             subject_name = request.form.get("subject_name", "").strip()  # ✅ Ensure correct name
-            fac_id = request.form.get("fID", "").strip()
+            fac_id = session.get("user")  # Bind edits to the signed-in faculty member
             student_id = request.form.get("s_id", "").strip()
             status = request.form.get("status", "").strip()
             date = request.form.get("date", "").strip()
@@ -946,6 +968,7 @@ def edit_attendance():
 
 
 @app.route("/faculty/download_attendance", methods=["POST"])
+@role_required("Faculty")
 def download_attendance():
     batch = request.form.get("batch").strip()
     branch = request.form.get("branch").strip()

@@ -42,7 +42,7 @@ conn = MySQLdb.connect(
     password=os.environ.get("DB_PASSWORD", ""),
     db=os.environ.get("DB_NAME", "attendance_database1"),
 )
-conn.autocommit(False)
+conn.autocommit(True)
 
 
 
@@ -587,6 +587,7 @@ def faculty():
             )
 
         try:
+            conn.begin()
             for student_id in sorted(all_students):
                 status = "Present" if student_id in recognized_students else "Absent"
                 cursor.execute(

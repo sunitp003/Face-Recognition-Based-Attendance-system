@@ -285,367 +285,80 @@ def addRecord():
 
 
 def unzip_file(zip_src, dst_dir, roll_id):
-    """
-    Extracts only image files into the student's roll number folder, ignoring subfolders.
-    
-    Args:
-        zip_src (str): Path to the uploaded ZIP file.
-        dst_dir (str): Target directory (uploads/{batch}/{branch}/{roll_id}).
-        roll_id (str): Student's roll number.
-
-    Returns:
-        str: Path to the extracted folder.
-    """
-
-    # Check if the uploaded file is a valid ZIP file
+    """Safely extract a bounded set of image files for one student."""
     if not zipfile.is_zipfile(zip_src):
-        print("❌ Not a valid ZIP file!")
         return None
-
-    with zipfile.ZipFile(zip_src, "r") as fz:
-        extract_to = os.path.join(dst_dir, roll_id)  # Ensure extraction inside roll_no folder
-        os.makedirs(extract_to, exist_ok=True)
-
-        # Iterate through files in the ZIP archive
-        for file in fz.namelist():
-            filename = os.path.basename(file)  # Extract filename only, ignore parent folders
-            if filename:  # Ensure it's not an empty folder
-                file_path = os.path.join(extract_to, filename)
-                with fz.open(file) as source, open(file_path, "wb") as target:
-                    target.write(source.read())
-
-        print(f"✅ Extracted files to: {extract_to}")
-
-    return extract_to  # Return path to extracted folder
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# @app.route("/studentReg", methods=["GET", "POST"])
-@role_required("Student")
-def studentReg():
-#     roll_id = session.get("user")  # ✅ Ensure user session exists
-#     cursor = conn.cursor()
-
-#     # ✅ Check if student is already registered
-#     cursor.execute("SELECT batch, branch FROM student_login WHERE roll_no=%s;", [roll_id])
-#     student = cursor.fetchone()
-
-#     if student and student[0] and student[1]:  
-#         print(f"✅ Student already registered: {roll_id}")  # Debugging
-#         return redirect(url_for("studentDashboard", user_id=roll_id))
-
-#     if request.method == "POST":
-#         roll_id = session.get("user")  # Trust only the authenticated student identity
-#         branch = request.form.get("branch", "").strip()  
-#         batch = request.values.get("batch", "").strip()
-#         zip_file = request.files.get("file")
-
-#         print(f"📌 Debug: Received branch={branch}")  # Debugging
-
-#         # ✅ Ensure all fields are filled and file is uploaded
-#         if not roll_id or not branch or not batch or not zip_file:
-#             print("❌ Validation failed - Missing fields")
-#             return render_template("registration.html", msg="❌ Please fill all fields correctly and upload a file.")
-
-#         cursor.execute("SELECT * FROM student_login WHERE roll_no=%s;", [roll_id])
-#         student = cursor.fetchone()
-
-#         if not student:
-#             print("❌ Student not found in database")
-#             return render_template("registration.html", msg="❌ Roll ID not found. Please check again.")
-
-#         # ✅ Use uploads directory instead of dataset
-#         target = os.path.join(APP_ROOT, "uploads", batch, branch)
-
-#         try:
-#             # ✅ Save ZIP file
-#             zip_src = os.path.join(APP_ROOT, "zip_uploads", zip_file.filename)
-#             zip_file.save(zip_src)
-
-#             extracted_folder = unzip_file(zip_src, target, roll_id)
-#             if not extracted_folder:
-#                 print("⚠️ ZIP file extraction failed")
-#                 return render_template("registration.html", msg="⚠️ Invalid ZIP file.")
-
-#             os.remove(zip_src)  # ✅ Remove ZIP file after extraction
-#             face_detect(extracted_folder, roll_id, branch, batch, APP_ROOT)  
-
-#             # ✅ Update student details in DB
-#             cursor.execute("UPDATE student_login SET branch=%s, batch=%s WHERE roll_no=%s;", (branch, batch, roll_id))
-#             conn.commit()
-
-#             # ✅ Update session and redirect to dashboard
-#             session["branch"] = branch
-#             session["batch"] = batch
-
-#             print(f"✅ Registration successful - Redirecting to dashboard for {roll_id}")
-#             return redirect(url_for("studentDashboard", user_id=roll_id))
-
-#         except Exception as e:
-#             print(f"⚠️ Error occurred: {e}")
-#             return render_template("registration.html", msg=f"⚠️ Error: {str(e)}")
-
-#     print("⚠️ GET request - Displaying registration form")
-#     return render_template("registration.html", msg="⚠️ Please enter your details.")
-
-
-
-
-
-# # --------------------------- STUDENT Dashboard -------------------------- #
-
-
-
-# @app.route("/studentDashboard", methods=["GET", "POST"])
-@role_required("Student")
-def studentDashboard():
-#     if "user" not in session:  
-#         return redirect(url_for("index"))
-
-#     s_ID = session["user"]
-#     cursor = conn.cursor()
-
-#     # ✅ Fetch batch, branch, and year for student
-#     cursor.execute("SELECT batch, branch FROM student_login WHERE roll_no=%s;", (s_ID,))
-#     student_info = cursor.fetchone()
-
-#     if not student_info:
-#         return render_template("dashB_stud.html", msg="❌ Student record not found.")
-
-#     batch, branch = student_info  
-
-#     # ✅ Fetch available subjects for filtering
-#     cursor.execute("SELECT DISTINCT a.subject_name FROM attendance a WHERE a.student_ID=%s", (s_ID,))
-#     subjects = [row[0] for row in cursor.fetchall()]
-
-#     # ✅ Fetch attendance records with subject filter
-#     subject_filter = request.values.get("subject", "")
-#     query = """
-#         SELECT DISTINCT attendance_date FROM attendance 
-#         WHERE student_ID=%s 
-#     """
-#     params = [s_ID]
-
-#     if subject_filter:
-#         query += " AND subject_name=%s"
-#         params.append(subject_filter)
-
-#     query += " ORDER BY attendance_date"
-
-#     cursor.execute(query, tuple(params))
-#     dates = [d[0] for d in cursor.fetchall()]  
-
-#     if not dates:
-#         return render_template("dashB_stud.html", msg="⚠️ No attendance records found.", subjects=subjects)
-
-#     # ✅ Generate attendance table dynamically
-#     date_columns = [f"MAX(CASE WHEN attendance_date = '{d}' THEN attendance_status END) AS `{d}`" for d in dates]
-
-#     query = f"""
-#         SELECT 
-#             student_ID, batch, branch, subject_name,
-#             {', '.join(date_columns)}, 
-#             ROUND((SUM(CASE WHEN attendance_status='Present' THEN 1 ELSE 0 END) / COUNT(*)) * 100, 2) AS attendance_percentage
-#         FROM attendance
-#         WHERE student_ID=%s
-#     """
-
-#     if subject_filter:
-#         query += " AND subject_name=%s"
-#         params.append(subject_filter)
-
-#     query += " GROUP BY student_ID, batch, branch, subject_name;"
-
-#     cursor.execute(query, tuple(params))
-#     result = cursor.fetchall()
-
-#     return render_template("student_view_attendance.html", result=result, dates=dates, subjects=subjects)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# --------------------------- STUDENT REGISTRATION -------------------------- #
-
-# @app.route("/studentReg", methods=["GET", "POST"])
-# def studentReg():
-#     roll_id = session.get("user")  # ✅ Ensure user session exists
-#     cursor = conn.cursor()
-
-#     # ✅ Check if student is already registered
-#     cursor.execute("SELECT batch, branch FROM student_login WHERE roll_no=%s;", [roll_id])
-#     student = cursor.fetchone()
-
-#     if student and student[0] and student[1]:  
-#         return redirect(url_for("studentDashboard", user_id=roll_id))
-
-#     if request.method == "POST":
-#         roll_id = session.get("user")  # Student identity comes only from the login session
-#         branch = request.form.get("branch", "").strip()  
-#         batch = request.values.get("batch", "").strip()
-#         zip_file = request.files.get("file")
-
-#         if not roll_id or not branch or not batch or not zip_file:
-#             return render_template("registration.html", msg="❌ Please fill all fields correctly and upload a file.")
-
-#         cursor.execute("SELECT * FROM student_login WHERE roll_no=%s;", [roll_id])
-#         student = cursor.fetchone()
-
-#         if not student:
-#             return render_template("registration.html", msg="❌ Roll ID not found. Please check again.")
-
-#         target = os.path.join("uploads", batch, branch)
-#         zip_src = os.path.join("zip_uploads", zip_file.filename)
-#         zip_file.save(zip_src)
-
-#         os.remove(zip_src)  # ✅ Remove ZIP file after extraction
-#         cursor.execute("UPDATE student_login SET branch=%s, batch=%s WHERE roll_no=%s;", (branch, batch, roll_id))
-#         conn.commit()
-
-#         session["branch"] = branch
-#         session["batch"] = batch
-
-#         return redirect(url_for("studentDashboard", user_id=roll_id))
-
-#     return render_template("registration.html", msg="⚠️ Please enter your details.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    extract_to = os.path.join(dst_dir, str(roll_id))
+    os.makedirs(extract_to, exist_ok=True)
+    allowed = (".jpg", ".jpeg", ".png")
+    total_bytes = 0
+    saved = 0
+    try:
+        with zipfile.ZipFile(zip_src, "r") as archive:
+            for item in archive.infolist():
+                if item.is_dir():
+                    continue
+                filename = secure_filename(os.path.basename(item.filename))
+                if not filename or not filename.lower().endswith(allowed):
+                    continue
+                if item.file_size > 8 * 1024 * 1024:
+                    continue
+                total_bytes += item.file_size
+                if total_bytes > 40 * 1024 * 1024 or saved >= 200:
+                    break
+                destination = os.path.join(extract_to, filename)
+                with archive.open(item) as source, open(destination, "wb") as target:
+                    shutil.copyfileobj(source, target)
+                saved += 1
+    except (zipfile.BadZipFile, OSError):
+        return None
+    return extract_to if saved else None
 @app.route("/studentReg", methods=["GET", "POST"])
+@role_required("Student")
 def studentReg():
-    roll_id = session.get("user")  # ✅ Ensure user session exists
+    roll_id = str(session.get("user", ""))
     cursor = conn.cursor()
-
-    # ✅ Check if student is already registered
-    cursor.execute("SELECT batch, branch FROM student_login WHERE roll_no=%s;", [roll_id])
+    cursor.execute("SELECT batch, branch FROM student_login WHERE roll_no=%s", (roll_id,))
     student = cursor.fetchone()
-
-    if student and student[0] and student[1]:  
-        return redirect(url_for("studentDashboard", user_id=roll_id))
+    if not student:
+        session.clear()
+        return redirect(url_for("index"))
+    if student[0] and student[1]:
+        return redirect(url_for("studentDashboard"))
 
     if request.method == "POST":
-        roll_id = request.values.get("roll_id", "").strip()
-        branch = request.form.get("branch", "").strip()  
-        batch = request.values.get("batch", "").strip()
+        branch = request.form.get("branch", "").strip()
+        batch = request.form.get("batch", "").strip()
         zip_file = request.files.get("file")
-
-        # Validate form input
-        if not roll_id or not branch or not batch or not zip_file:
-            return render_template("registration.html", msg="❌ Please fill all fields correctly and upload a file.")
-
-        # Check if the student exists in the database
-        cursor.execute("SELECT * FROM student_login WHERE roll_no=%s;", [roll_id])
-        student = cursor.fetchone()
-
-        if not student:
-            return render_template("registration.html", msg="❌ Roll ID not found. Please check again.")
-
-        # Validate folder components and use a generated archive name.
+        if not branch or not batch or not zip_file or not zip_file.filename:
+            return render_template("registration.html", msg="Please fill all fields and upload a ZIP of face images.")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
-            return render_template("registration.html", msg="❌ Invalid batch or branch.")
+            return render_template("registration.html", msg="Invalid batch or branch.")
         if not zip_file.filename.lower().endswith(".zip"):
-            return render_template("registration.html", msg="❌ Please upload a ZIP file.")
+            return render_template("registration.html", msg="Please upload a ZIP file.")
         target = os.path.join(APP_ROOT, "uploads", batch, branch)
         zip_dir = os.path.join(APP_ROOT, "zip_uploads")
         os.makedirs(zip_dir, exist_ok=True)
         zip_src = os.path.join(zip_dir, uuid.uuid4().hex + ".zip")
         zip_file.save(zip_src)
-
-        # Call the unzip_file function to extract files to the student's folder
-        extracted_folder = unzip_file(zip_src, target, roll_id)
-
+        try:
+            extracted_folder = unzip_file(zip_src, target, roll_id)
+        finally:
+            if os.path.exists(zip_src):
+                os.remove(zip_src)
         if not extracted_folder:
-            return render_template("registration.html", msg="❌ Failed to extract ZIP file.")
-
-        # Remove the temporary ZIP archive after extraction.
-        if os.path.exists(zip_src):
-            os.remove(zip_src)
-
-        # Update student information in the database
-        cursor.execute("UPDATE student_login SET branch=%s, batch=%s WHERE roll_no=%s;", (branch, batch, roll_id))
+            return render_template("registration.html", msg="No valid JPG/PNG images found in the ZIP.")
+        cursor.execute(
+            "UPDATE student_login SET branch=%s, batch=%s WHERE roll_no=%s",
+            (branch, batch, roll_id)
+        )
         conn.commit()
-
-        # Set session variables
         session["branch"] = branch
         session["batch"] = batch
-
-        # Redirect to student dashboard
-        return redirect(url_for("studentDashboard", user_id=roll_id))
-
-    return render_template("registration.html", msg="⚠️ Please enter your details.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# --------------------------- STUDENT DASHBOARD -------------------------- #
-
+        return redirect(url_for("studentDashboard"))
+    return render_template("registration.html", msg="Enter your branch, batch and face-image ZIP.")
 @app.route("/studentDashboard", methods=["GET", "POST"])
+@role_required("Student")
 def studentDashboard():
     if "user" not in session:  
         return redirect(url_for("index"))

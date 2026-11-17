@@ -500,79 +500,110 @@ def student_view_attendance():
 @app.route("/faculty", methods=["GET", "POST"])
 @role_required("Faculty")
 def faculty():
-    if request.method == "POST":
-        fac_id = session.get("user")  # Trust only the authenticated faculty identity
-        batch = request.values.get("batch")
-        branch = request.values.get("branch")
-        year = request.values.get("year")
-        subject = request.values.get("subject")
-        date = request.values.get("date")
-        upload = request.files.get("file")
+    if request.method != "POST":
+        return render_template("dashB_faculty.html", facul_id=session.get("user"))
 
-        cursor = conn.cursor()
+    fac_id = str(session.get("user", ""))
+    batch = request.form.get("batch", "").strip()
+    branch = request.form.get("branch", "").strip()
+    year = request.form.get("year", "").strip()
+    subject = request.form.get("subject", "").strip()
+    date = request.form.get("date", "").strip()
+    upload = request.files.get("file")
 
-        # ✅ Check if attendance already recorded for this date
-        cursor.execute("""
-            SELECT * FROM attendance 
-            WHERE attendance_date=%s AND batch=%s AND branch=%s AND subject_name=%s
-        """, (date, batch, branch, subject))
-        existing_attendance = cursor.fetchall()
+    if not all((batch, branch, year, subject, date, upload, upload.filename)):
+        return render_template("dashB_faculty.html", msg="Please complete every field and select an MP4 video.", facul_id=fac_id)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
+        return render_template("dashB_faculty.html", msg="Invalid batch or branch.", facul_id=fac_id)
+    if not upload.filename.lower().endswith(".mp4"):
+        return render_template("dashB_faculty.html", msg="Only MP4 videos are supported.", facul_id=fac_id)
 
-        if existing_attendance:
-            print(f"⚠️ Attendance already recorded for {date}, batch: {batch}, branch: {branch}, subject: {subject}")
-            return render_template("dashB_faculty.html", msg="⚠️ Attendance already uploaded for this date.", facul_id=fac_id)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM attendance WHERE attendance_date=%s AND batch=%s AND branch=%s AND subject_name=%s LIMIT 1",
+        (date, batch, branch, subject)
+    )
+    if cursor.fetchone():
+        return render_template("dashB_faculty.html", msg="Attendance already exists for this date and subject.", facul_id=fac_id)
 
-        # ✅ Save uploaded attendance video file
-        if upload:
-            filename = f"{batch}_{branch}_{subject}_{date}.mp4"
-            file_path = os.path.join(APP_ROOT, "attendance", filename)
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Ensure directory exists
-            upload.save(file_path)
+    video_dir = os.path.join(APP_ROOT, "attendance")
+    os.makedirs(video_dir, exist_ok=True)
+    video_path = os.path.join(video_dir, uuid.uuid4().hex + ".mp4")
+    upload.save(video_path)
 
-            print(f"📂 File uploaded successfully: {file_path}")
+    recognized = recognition.recognize_attendance(APP_ROOT, video_path, branch, batch)
+    if not recognized:
+        return render_template("dashB_faculty.html", msg="No confident faces recognized. Attendance NOT saved; check the video and model.", facul_id=fac_id)
 
-            # ✅ Recognize faces from the video
-            recognized_students = recognition.recognize_attendance(APP_ROOT, file_path, branch, batch)
+    cursor.execute(
+        "SELECT roll_no FROM student_login WHERE batch=%s AND branch=%s",
+        (batch, branch)
+    )
+    all_students = sorted(str(row[0]) for row in cursor.fetchall())
+    recognized_students = sorted(set(str(value) for value in recognized).intersection(all_students))
+    if not recognized_students:
+        return render_template("dashB_faculty.html", msg="Recognized IDs do not belong to this batch/branch. Attendance NOT saved.", facul_id=fac_id)
 
-            if recognized_students:
-                print(f"✅ Recognized Students: {recognized_students}")
-            else:
-                print("No confident face matches; attendance was not written.")
-                return render_template("dashB_faculty.html", msg="❌ No confident faces recognized. Attendance NOT saved; check the video/model and retry.", facul_id=fac_id)
-
-            # ✅ Fetch all registered students for batch & branch
-            cursor.execute("SELECT roll_no FROM student_login WHERE batch=%s AND branch=%s", (batch, branch))
-            all_students = [str(row[0]) for row in cursor.fetchall()]  # Convert all student IDs to strings
-
-            print(f"📋 Total Registered Students: {len(all_students)} -> {all_students}")
-
-            # ✅ Convert recognized IDs to string for correct comparison
-            recognized_students = set(str(Id) for Id in recognized_students)
-
-            # ✅ Insert or update attendance records
-            for student_id in all_students:
-                status = "Present" if str(student_id) in recognized_students else "Absent"
-                
-                cursor.execute("""
-                    INSERT INTO attendance (student_ID, faculty_ID, batch, branch, year, subject_name, attendance_date, attendance_status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE attendance_status = VALUES(attendance_status);
-                """, (student_id, fac_id, batch, branch, year, subject, date, status))
-
-            conn.commit()
-            msg = "✅ Attendance saved successfully!"
-            print(msg)
-            return render_template("dashB_faculty.html", msg=msg, facul_id=fac_id)
-
-    return render_template("dashB_faculty.html", facul_id=request.args.get("facul_id"))
-
+    absent_students = sorted(set(all_students) - set(recognized_students))
+    session["attendance_preview"] = {
+        "faculty_id": fac_id,
+        "batch": batch,
+        "branch": branch,
+        "year": year,
+        "subject": subject,
+        "date": date,
+        "all_students": all_students,
+        "recognized_students": recognized_students,
+    }
+    return render_template(
+        "attendance_review.html",
+        recognized_students=recognized_students,
+        absent_students=absent_students,
+        batch=batch,
+        branch=branch,
+        subject=subject,
+        date=date,
+    )
 
 
+@app.route("/faculty/confirm_attendance", methods=["POST"])
+@role_required("Faculty")
+def confirm_attendance():
+    preview = session.get("attendance_preview")
+    if not preview or preview.get("faculty_id") != str(session.get("user", "")):
+        session.pop("attendance_preview", None)
+        return redirect(url_for("faculty"))
+
+    cursor = conn.cursor()
+    try:
+        for student_id in preview["all_students"]:
+            status = "Present" if student_id in preview["recognized_students"] else "Absent"
+            cursor.execute(
+                """
+                INSERT INTO attendance
+                    (student_ID, faculty_ID, batch, branch, year, subject_name, attendance_date, attendance_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE attendance_status=VALUES(attendance_status)
+                """,
+                (
+                    student_id, preview["faculty_id"], preview["batch"],
+                    preview["branch"], preview["year"], preview["subject"],
+                    preview["date"], status
+                )
+            )
+        conn.commit()
+        session.pop("attendance_preview", None)
+        return render_template("dashB_faculty.html", msg="Attendance reviewed and saved successfully.", facul_id=session.get("user"))
+    except Exception:
+        conn.rollback()
+        return render_template("dashB_faculty.html", msg="Attendance could not be saved. No changes were committed.", facul_id=session.get("user"))
 
 
-
-# -------------------------------- Faculty View Attendance  -------------------------------- #
-
+@app.route("/faculty/cancel_attendance", methods=["POST"])
+@role_required("Faculty")
+def cancel_attendance():
+    session.pop("attendance_preview", None)
+    return redirect(url_for("faculty"))
 @app.route("/faculty/view_attendance", methods=["GET", "POST"])
 @role_required("Faculty")
 def faculty_view():

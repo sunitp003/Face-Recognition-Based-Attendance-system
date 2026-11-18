@@ -42,7 +42,7 @@ def faculty():
 
         if not all((fac_id, batch, branch, year, subject, date_value)):
             return render_template("dashB_faculty.html", msg="Please provide batch, branch, year, subject and attendance date.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", branch):
             return render_template("dashB_faculty.html", msg="Invalid batch or branch.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
         try:
             datetime.strptime(date_value, "%Y-%m-%d")
@@ -120,7 +120,15 @@ def faculty():
                         header = video_file.read(12)
                     if len(header) < 12 or b"ftyp" not in header[4:12]:
                         raise ValueError("The uploaded file is not a valid MP4 video.")
-                    recognized = recognition.recognize_attendance(APP_ROOT, saved_paths[0], branch, batch)
+                    try:
+                        video_limit = int(os.environ.get("VIDEO_MAX_DURATION_SECONDS", "900"))
+                    except ValueError:
+                        video_limit = 900
+                    video_limit = max(30, min(video_limit, 900))
+                    recognized = recognition.recognize_attendance(
+                        APP_ROOT, saved_paths[0], branch, batch,
+                        max_duration_seconds=video_limit,
+                    )
 
             recognition_failed = recognized is None
         except ValueError as exc:
@@ -310,7 +318,8 @@ def confirm_attendance():
 @bp.route("/faculty/cancel_attendance_review", methods=["GET"])
 @role_required("Faculty")
 def cancel_attendance_review():
-    session.pop("pending_attendance", None)
+    # Clear the server-side pending review record and its backing file.
+    _clear_pending_attendance()
     return redirect(url_for("faculty"))
 
 

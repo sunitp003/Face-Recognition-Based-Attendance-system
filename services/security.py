@@ -11,7 +11,7 @@ def role_required(*allowed_roles):
         def wrapped(*args, **kwargs):
             if session.get("role") not in allowed_roles or "user" not in session:
                 return redirect(url_for("index"))
-            if session.get("must_change_password") and request.endpoint != "change_password":
+            if session.get("must_change_password") and request.endpoint not in {"change_password", "auth.change_password"}:
                 return redirect(url_for("change_password"))
             return view(*args, **kwargs)
         return wrapped

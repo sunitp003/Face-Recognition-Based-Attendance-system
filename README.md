@@ -8,7 +8,7 @@ A Flask + MySQL attendance application using **OpenCV Haar Cascade face detectio
 2. Admin trains the model for the exact batch and branch.
 3. Training accepts only images containing exactly one detectable face, rejects blurry or badly lit images, removes exact duplicate face crops, requires at least five usable images per student, and caps each student's training set to 30 images.
 4. The model is saved as `models/<batch>/<branch>/trainer.yml`; `labels.json` stores the exact model-label-to-roll-number mapping. Keep these files together.
-5. Faculty uploads a classroom MP4. Recognition uses Haar Cascade + LBPH, rejects low-quality face crops and aggregates matches over separate one-second windows.
+5. Faculty selects one of three sources: up to 30 classroom photos (JPG/JPEG/PNG), one MP4 classroom video, or a server-configured RTSP college CCTV stream. Recognition uses Haar Cascade + LBPH and rejects low-quality face crops. Video/CCTV processing is bounded by a maximum duration.
 6. **Recognition suggestions are not saved automatically.** Faculty sees a review screen with model suggestions pre-selected, can correct the list, and must confirm before attendance is written to MySQL.
 7. Attendance writes are performed in one database transaction. A failed write is rolled back instead of leaving partial attendance rows.
 
@@ -37,6 +37,9 @@ Set environment variables before starting the app:
 | `DB_NAME` | Database name (default attendance_database1) |
 | `LBPH_DISTANCE_THRESHOLD` | Maximum LBPH distance accepted (default 42; lower is stricter) |
 | `LBPH_MIN_VOTES` | Minimum distinct one-second evidence windows (default 5; minimum 3) |
+| `VIDEO_MAX_DURATION_SECONDS` | Maximum uploaded MP4 processing time (default 900 seconds; clamped to 30–900) |
+| `CCTV_RTSP_URL` | Optional administrator-configured RTSP stream URL; never supplied by a browser form |
+| `CCTV_CAPTURE_SECONDS` | CCTV capture duration (default 300 seconds; clamped to 30–900) |
 
 Generate a persistent secret using `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Never commit real credentials.
 
@@ -69,7 +72,7 @@ The hardened branch adds the following safeguards:
 - A request-scoped MySQL connection is opened only when a request needs the database and closed during Flask teardown. Do not share a connection between worker threads.
 - Every POST form carries a session-bound CSRF token. Keep the session secret stable across restarts and all application workers.
 - Production startup refuses to run without `SECRET_KEY`. Set `APP_ENV=production`, `SECRET_KEY` and `COOKIE_SECURE=1` behind HTTPS.
-- Uploaded MP4 files are checked for an MP4 file-type marker and removed after recognition processing. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
+- Uploaded MP4 files are checked for an MP4 file-type marker, limited to 50 MB and bounded processing duration, then removed after recognition processing. Photo uploads are limited to 30 images and 50 MB total. CCTV is an optional server-configured, bounded RTSP source. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
 - Pending faculty reviews are stored server-side rather than in the browser cookie and expire after two hours. All workers must share the same persistent application filesystem for this temporary storage.
 - Excel downloads are generated in memory to avoid concurrent requests overwriting one shared filename.
 - Admin deletion is blocked when a student or faculty member has historical attendance, preventing accidental cascade deletion of academic records.

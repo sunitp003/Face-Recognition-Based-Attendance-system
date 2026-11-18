@@ -37,7 +37,7 @@ Set environment variables before starting the app:
 | `DB_NAME` | Database name (default attendance_database1) |
 | `LBPH_DISTANCE_THRESHOLD` | Maximum LBPH distance accepted (default 42; lower is stricter) |
 | `LBPH_MIN_VOTES` | Minimum distinct one-second evidence windows (default 5; minimum 3) |
-| `VIDEO_MAX_DURATION_SECONDS` | Maximum uploaded MP4 processing time (default 900 seconds; clamped to 30–900) |
+| `VIDEO_MAX_DURATION_SECONDS` | Maximum uploaded MP4 media duration (default 900 seconds; clamped to 30–900; longer videos are rejected) |
 | `CCTV_RTSP_URL` | Optional administrator-configured RTSP stream URL; never supplied by a browser form |
 | `CCTV_CAPTURE_SECONDS` | CCTV capture duration (default 300 seconds; clamped to 30–900) |
 

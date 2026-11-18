@@ -6,7 +6,7 @@ This refactor is intentionally additive and keeps the existing runtime contract.
 
 - Python, Flask, MySQL, OpenCV, Haar Cascade and LBPH remain the core stack.
 - The database schema and existing attendance workflow are unchanged.
-- Existing route paths, endpoint names, templates and form/session conventions remain in `app.py`.
+- Existing route paths and endpoint names are registered by the Flask blueprints in `routes/`; templates remain in `templates/`.
 - `modelTrain.py` and `recognition.py` remain compatibility entry points for older imports and scripts.
 - Face recognition remains advisory: faculty review and confirmation are still required before attendance is written.
 
@@ -23,7 +23,7 @@ The Flask application is created by `create_app()` and registers five blueprints
 | `services/pending_attendance.py` | Short-lived server-side attendance review state |
 | `services/security.py` | Session role guard and CSRF request protection |
 | `database.py` | Request/application-context scoped MySQL connection lifecycle |
-| `app.py` | Existing Flask routes, templates and orchestration |
+| `app.py` | Flask application factory, security registration, blueprint wiring and request lifecycle |
 
 ## Compatibility
 

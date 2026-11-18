@@ -42,8 +42,14 @@ def unzip_file(zip_src, dst_dir, roll_id, validator=None):
         if not saved:
             return None
         # Validate staged images before replacing previously accepted samples.
-        if validator is not None and not validator(staging):
-            raise ValueError("At least five distinct, clear, single-face images are required.")
+        if validator is not None:
+            try:
+                valid_samples = validator(staging)
+            except Exception as exc:
+                logging.warning("Student image validation failed: %s", exc)
+                return None
+            if not valid_samples:
+                raise ValueError("At least five distinct, clear, single-face images are required.")
         if os.path.exists(extract_to):
             os.replace(extract_to, backup)
         try:

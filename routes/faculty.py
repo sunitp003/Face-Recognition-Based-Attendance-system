@@ -38,88 +38,102 @@ def faculty():
         year = request.form.get("year", "").strip()
         subject = request.form.get("subject", "").strip()
         date_value = request.form.get("date", "").strip()
-        upload = request.files.get("file")
+        source_mode = request.form.get("source_mode", "video").lower()
 
         if not all((fac_id, batch, branch, year, subject, date_value)):
-            return render_template(
-                "dashB_faculty.html",
-                msg="Please provide batch, branch, year, subject, date and video.",
-                facul_id=fac_id,
-            )
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(
-            r"[A-Za-z0-9_-]{1,30}", branch
-        ):
-            return render_template(
-                "dashB_faculty.html", msg="Invalid batch or branch.", facul_id=fac_id
-            )
+            return render_template("dashB_faculty.html", msg="Please provide batch, branch, year, subject and attendance date.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
+            return render_template("dashB_faculty.html", msg="Invalid batch or branch.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
         try:
             datetime.strptime(date_value, "%Y-%m-%d")
         except ValueError:
-            return render_template(
-                "dashB_faculty.html", msg="Invalid attendance date.", facul_id=fac_id
-            )
-        if not upload or not upload.filename:
-            return render_template(
-                "dashB_faculty.html", msg="Please upload an MP4 video.", facul_id=fac_id
-            )
-        if not upload.filename.lower().endswith(".mp4"):
-            return render_template(
-                "dashB_faculty.html", msg="Only MP4 videos are supported.", facul_id=fac_id
-            )
+            return render_template("dashB_faculty.html", msg="Invalid attendance date.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
+        if source_mode not in {"photos", "video", "cctv"}:
+            return render_template("dashB_faculty.html", msg="Choose a valid attendance source.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
 
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT 1 FROM attendance
             WHERE attendance_date=%s AND batch=%s AND branch=%s AND subject_name=%s
             LIMIT 1
-            """,
-            (date_value, batch, branch, subject),
-        )
+        """, (date_value, batch, branch, subject))
         if cursor.fetchone():
-            return render_template(
-                "dashB_faculty.html",
-                msg="Attendance already exists for this date, batch, branch and subject.",
-                facul_id=fac_id,
-            )
+            return render_template("dashB_faculty.html", msg="Attendance already exists for this date, batch, branch and subject.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
 
-        cursor.execute(
-            "SELECT roll_no FROM student_login WHERE batch=%s AND branch=%s",
-            (batch, branch),
-        )
+        cursor.execute("SELECT roll_no FROM student_login WHERE batch=%s AND branch=%s", (batch, branch))
         all_students = {str(row[0]) for row in cursor.fetchall()}
         if not all_students:
-            return render_template(
-                "dashB_faculty.html",
-                msg="No registered students found for this batch and branch.",
-                facul_id=fac_id,
-            )
+            return render_template("dashB_faculty.html", msg="No registered students found for this batch and branch.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
 
-        # Use a random server-side filename; never put form values into a path.
+        recognized = None
+        recognition_failed = False
+        media_dir = None
         attendance_dir = os.path.join(APP_ROOT, "attendance")
         os.makedirs(attendance_dir, exist_ok=True)
-        file_path = os.path.join(attendance_dir, f"{uuid.uuid4().hex}.mp4")
+
         try:
-            upload.save(file_path)
-            with open(file_path, "rb") as video_file:
-                header = video_file.read(12)
-            if len(header) < 12 or b"ftyp" not in header[4:12]:
-                return render_template(
-                    "dashB_faculty.html", msg="The uploaded file is not a valid MP4 video.", facul_id=fac_id
-                )
-            recognized = recognition.recognize_attendance(
-                APP_ROOT, file_path, branch, batch
-            )
+            if source_mode == "cctv":
+                # Camera URL is administrator-controlled and never accepted from the form.
+                camera_url = os.environ.get("CCTV_RTSP_URL", "").strip()
+                if not camera_url.lower().startswith("rtsp://"):
+                    return render_template("dashB_faculty.html", msg="CCTV is not configured. Ask the administrator to configure CCTV_RTSP_URL.", facul_id=fac_id, cctv_enabled=False)
+                try:
+                    duration = int(os.environ.get("CCTV_CAPTURE_SECONDS", "300"))
+                except ValueError:
+                    duration = 300
+                duration = max(30, min(duration, 900))
+                recognized = recognition.recognize_attendance(APP_ROOT, camera_url, branch, batch, max_duration_seconds=duration)
+            else:
+                uploads = [item for item in request.files.getlist("files") if item and item.filename]
+                # Backward compatibility for older clients posting the original file field.
+                if not uploads:
+                    legacy_upload = request.files.get("file")
+                    if legacy_upload and legacy_upload.filename:
+                        uploads = [legacy_upload]
+                if not uploads:
+                    return render_template("dashB_faculty.html", msg="Select at least one photo or one video to upload.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
+
+                if source_mode == "photos":
+                    if len(uploads) > 30 or any(os.path.splitext(item.filename)[1].lower() not in {".jpg", ".jpeg", ".png"} for item in uploads):
+                        return render_template("dashB_faculty.html", msg="Upload up to 30 JPG, JPEG or PNG photos at a time.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
+                elif len(uploads) != 1 or os.path.splitext(uploads[0].filename)[1].lower() != ".mp4":
+                    return render_template("dashB_faculty.html", msg="Upload exactly one MP4 video for video mode.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
+
+                media_dir = os.path.join(attendance_dir, uuid.uuid4().hex)
+                os.makedirs(media_dir, exist_ok=False)
+                saved_paths = []
+                total_bytes = 0
+                for index, upload in enumerate(uploads, start=1):
+                    extension = os.path.splitext(secure_filename(upload.filename))[1].lower()
+                    destination = os.path.join(media_dir, f"upload_{index}{extension}")
+                    upload.save(destination)
+                    size = os.path.getsize(destination)
+                    total_bytes += size
+                    if size == 0 or size > 50 * 1024 * 1024 or total_bytes > 50 * 1024 * 1024:
+                        raise ValueError("Uploads must be non-empty and total no more than 50 MB.")
+                    saved_paths.append(destination)
+
+                if source_mode == "photos":
+                    recognized = recognition.recognize_attendance_images(APP_ROOT, saved_paths, branch, batch)
+                else:
+                    with open(saved_paths[0], "rb") as video_file:
+                        header = video_file.read(12)
+                    if len(header) < 12 or b"ftyp" not in header[4:12]:
+                        raise ValueError("The uploaded file is not a valid MP4 video.")
+                    recognized = recognition.recognize_attendance(APP_ROOT, saved_paths[0], branch, batch)
+
             recognition_failed = recognized is None
+        except ValueError as exc:
+            return render_template("dashB_faculty.html", msg=str(exc), facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
         except Exception:
-            logging.exception("Recognition processing failed")
+            logging.exception("Attendance source processing failed")
             recognized = None
             recognition_failed = True
         finally:
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            if media_dir and os.path.isdir(media_dir):
+                shutil.rmtree(media_dir, ignore_errors=True)
 
-        # Detection is advisory; faculty must verify the complete list.
+        # Recognition is advisory. The teacher checks every student before saving.
         recognized_students = sorted(set(map(str, recognized or [])) & all_students)
         _store_pending_attendance({
             "faculty_id": fac_id,
@@ -128,12 +142,13 @@ def faculty():
             "year": year,
             "subject": subject,
             "date": date_value,
+            "source_mode": source_mode,
             "suggested_present": recognized_students,
             "recognition_failed": recognition_failed,
         })
         return redirect(url_for("confirm_attendance"))
 
-    return render_template("dashB_faculty.html", facul_id=session.get("user"))
+    return render_template("dashB_faculty.html", facul_id=session.get("user"), cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
 
 
 @bp.route("/faculty/confirm_attendance", methods=["GET", "POST"])

@@ -94,7 +94,7 @@
 <body>
     <div class="navbar">
         <a href="/">Home</a>
-        <a href="{{ url_for('logout') }}">Logout</a>
+        <form action="{{ url_for('logout') }}" method="POST" style="display:inline"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit">Logout</button></form>
         <a href="/studentDashboard">Dashboard</a>
     </div>
     <div class="mainHeading">

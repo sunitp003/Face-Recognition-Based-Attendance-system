@@ -139,17 +139,7 @@
 
     <div id="container" class="wrap"></div>
     
-    <script>
-      document.addEventListener("DOMContentLoaded", function () {
-        const branch = document.getElementById("branch");
-        const year = document.getElementById("year");
-        const subject = document.getElementById("subject");
-        const refresh = () => window.updateAttendanceSubjects(branch.value, year.value, subject);
-        branch.addEventListener("change", refresh);
-        year.addEventListener("change", refresh);
-        refresh();
-      });
-    </script>
+
 </body>
 
 </html>

@@ -24,6 +24,7 @@ from database import conn
 from services.security import role_required
 from services.pending_attendance import _clear_pending_attendance, _load_pending_attendance, _store_pending_attendance
 from services.file_storage import unzip_file
+from services.attendance_catalogue import is_valid_subject
 
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 bp = Blueprint("faculty", __name__)
@@ -44,6 +45,8 @@ def faculty():
             return render_template("dashB_faculty.html", msg="Please provide batch, branch, year, subject and attendance date.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,50}", branch):
             return render_template("dashB_faculty.html", msg="Invalid batch or branch.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
+        if not is_valid_subject(branch, year, subject):
+            return render_template("dashB_faculty.html", msg="Invalid branch, year or subject selection. Choose a subject from the available catalogue.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
         try:
             datetime.strptime(date_value, "%Y-%m-%d")
         except ValueError:
@@ -315,7 +318,7 @@ def confirm_attendance():
     return render_template("dashB_faculty.html", msg=msg, facul_id=fac_id)
 
 
-@bp.route("/faculty/cancel_attendance_review", methods=["GET"])
+@bp.route("/faculty/cancel_attendance_review", methods=["POST"])
 @role_required("Faculty")
 def cancel_attendance_review():
     # Clear the server-side pending review record and its backing file.

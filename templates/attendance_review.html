@@ -66,7 +66,7 @@
             </table>
             <div class="actions">
                 <button type="submit">Confirm and Save Attendance</button>
-                <a class="cancel" href="{{ url_for('cancel_attendance_review') }}">Cancel / Return</a>
+                <form method="POST" action="{{ url_for('cancel_attendance_review') }}"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" class="cancel">Cancel / Return</button></form>
             </div>
         </form>
     </main>

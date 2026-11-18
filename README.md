@@ -83,11 +83,13 @@ The hardened branch adds the following safeguards:
 ### Important deployment steps after upgrading
 
 1. Back up the MySQL database, student image datasets, and current models before deploying.
-2. For an existing database, run `migrations/002_password_hashes.sql` exactly once. Fresh databases created with the updated `database_creation.sql` do not need this migration.
-3. Set a persistent `SECRET_KEY` and database credentials through environment variables. Never use the Flask development server in production.
+2. For an existing database, run `migrations/001_attendance_summary_update_trigger.sql` and `migrations/002_password_hashes.sql` exactly once each if the trigger/columns are missing. Fresh databases created with the updated `database_creation.sql` already contain both attendance triggers and password hash columns; inspect the schema before applying migrations.
+3. Set a persistent `SECRET_KEY` and database credentials through environment variables. Create a dedicated least-privilege MySQL account (do not use `root`). For a local college demonstration, start with `python app.py` only on a trusted local network. For production install requirements and run `gunicorn --workers 2 --threads 4 --timeout 120 app:app` behind an HTTPS reverse proxy; set `APP_ENV=production`, `COOKIE_SECURE=1`, a strong `SECRET_KEY`, and a non-root DB account. The included `Procfile` is an example, not a complete hosting configuration.
 4. Retrain **every batch/branch** after deploying this version. A model must have a matching `manifest.json`; legacy models without a manifest are intentionally rejected until retrained.
 5. Run the application over HTTPS and set `COOKIE_SECURE=1`.
 6. Run the regression suite with `python -m unittest discover -s tests -v`.
+7. Server-side branch/year/subject validation is enforced independently of browser dropdowns. Keep `services/attendance_catalogue.py` aligned with `static/js/attendance_subjects.js`.
+8. Logout and attendance-review cancellation are POST-only and protected by CSRF. Update any custom integrations to submit CSRF-protected POST forms.
 7. Test using held-out classroom videos and manually compare false accepts, false rejects, and missed detections before real attendance use.
 
 ### Account migration requirement

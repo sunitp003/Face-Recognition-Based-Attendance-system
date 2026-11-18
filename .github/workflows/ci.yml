@@ -6,6 +6,7 @@ on:
       - main
       - "refactor/**"
       - "feature/**"
+      - "hardening/**"
   pull_request:
     branches:
       - main

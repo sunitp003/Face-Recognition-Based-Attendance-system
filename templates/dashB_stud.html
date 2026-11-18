@@ -164,31 +164,17 @@
     </div>
 
     <div id="container" class="wrap"></div>
+        <script src="{{ url_for('static', filename='js/attendance_subjects.js') }}"></script>
     <script>
-        document.getElementById("year").addEventListener("change", function() {
-    const branch = document.getElementById("branch").value.toUpperCase(); // ✅ Convert to uppercase
-    const year = this.value;
-    const subjectDropdown = document.getElementById("subject");
-
-    const subjects = {
-        'CE': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["M3", "DSA", "COA", "DBMS"], '3': ["OS", "CN", "TOC", "SE"], '4': ["AI", "ML", "Cloud Computing", "Big Data"]},
-        'IT': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["DSA", "OOPS", "DBMS", "Computer Networks"], '3': ["OS", "Web Technologies", "AI", "Cybersecurity"], '4': ["Blockchain", "IoT", "Data Science", "DevOps"]},
-        'ME': {'1': ["Engineering Mechanics", "M1", "Physics", "Chemistry"], '2': ["Thermodynamics", "Fluid Mechanics", "SOM", "Material Science"], '3': ["Manufacturing", "IC Engines", "Robotics", "Heat Transfer"], '4': ["Automobile Engineering", "Mechatronics", "Advanced Robotics", "Computational Fluid Dynamics"]},
-        'EC': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["Digital Electronics", "Microprocessors", "Signals & Systems", "Communication Networks"], '3': ["Embedded Systems", "VLSI", "Wireless Communication", "DSP"], '4': ["IoT", "Optical Fiber Communication", "Radar Systems", "Satellite Communication"]}
-    };
-
-    subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
-    
-    if (subjects[branch] && subjects[branch][year]) { // ✅ Ensure branch & year exist
-        subjects[branch][year].forEach(sub => {
-            const option = document.createElement("option");
-            option.value = sub;
-            option.textContent = sub;
-            subjectDropdown.appendChild(option);
-        
-                });
-            }
-        });
+      document.addEventListener("DOMContentLoaded", function () {
+        const branch = document.getElementById("branch");
+        const year = document.getElementById("year");
+        const subject = document.getElementById("subject");
+        const refresh = () => window.updateAttendanceSubjects(branch.value, year.value, subject);
+        branch.addEventListener("change", refresh);
+        year.addEventListener("change", refresh);
+        refresh();
+      });
     </script>
 </body>
 

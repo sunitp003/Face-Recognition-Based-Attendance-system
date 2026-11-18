@@ -145,50 +145,27 @@
         </form>
     </div>
 
+    <script src="{{ url_for('static', filename='js/attendance_subjects.js') }}"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            let batchSelect = document.getElementById("batchSelect");
-            let subjectDropdown = document.getElementById("subject");
-            let yearDropdown = document.getElementById("year");
-            let branchDropdown = document.getElementById("branch");
-    
-            let currentYear = new Date().getFullYear();
+            const batchSelect = document.getElementById("batchSelect");
+            const subjectDropdown = document.getElementById("subject");
+            const yearDropdown = document.getElementById("year");
+            const branchDropdown = document.getElementById("branch");
+            const currentYear = new Date().getFullYear();
             for (let year = 2015; year <= currentYear; year++) {
-                let option = document.createElement("option");
+                const option = document.createElement("option");
                 option.value = year;
                 option.textContent = year;
                 batchSelect.appendChild(option);
             }
-    
-            const subjects = {
-                "ce": { "1": ["M1", "M2", "Physics", "Chemistry"], "2": ["M3", "DSA", "COA", "DBMS"], "3": ["OS", "CN", "TOC", "SE"], "4": ["AI", "ML", "Cloud Computing", "Big Data"] },
-                "it": { "1": ["Maths", "Physics", "C Programming"], "2": ["Data Structures", "DBMS", "OOP"], "3": ["Software Engineering", "Networks", "Cyber Security"], "4": ["Cloud Computing", "Blockchain", "Big Data"] },
-                "me": { "1": ["Physics", "Chemistry", "Graphics"], "2": ["Thermodynamics", "Mechanics", "Fluid Mechanics"], "3": ["Heat Transfer", "Dynamics", "Manufacturing"], "4": ["Automobile", "Robotics", "Production"] },
-                "ec": { "1": ["Basic Electronics", "Maths", "Physics"], "2": ["Analog Circuits", "Digital Electronics", "Signals & Systems"], "3": ["Microprocessors", "VLSI", "Embedded Systems"], "4": ["Wireless Communication", "Antenna Design", "IoT"] },
-                "ee": { "1": ["Electrical Circuits", "Maths", "Physics"], "2": ["Machines", "Power Systems", "Electromagnetics"], "3": ["Control Systems", "Power Electronics", "Energy Management"], "4": ["Smart Grid", "Renewable Energy", "High Voltage Engineering"] }
-            };
-    
             function updateSubjects() {
-                let branch = branchDropdown.value;
-                let year = yearDropdown.value;
-    
-                subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
-                
-                if (subjects[branch] && subjects[branch][year]) {
-                    subjects[branch][year].forEach(sub => {
-                        let option = document.createElement("option");
-                        option.value = sub;
-                        option.textContent = sub;
-                        subjectDropdown.appendChild(option);
-                    });
-                }
+                window.updateAttendanceSubjects(branchDropdown.value, yearDropdown.value, subjectDropdown);
             }
-    
-            // ✅ Update subjects when either Year or Branch is changed
             yearDropdown.addEventListener("change", updateSubjects);
             branchDropdown.addEventListener("change", updateSubjects);
         });
     </script>
-    
+
 </body>
 </html>

@@ -3,6 +3,11 @@ import logging
 import os
 import secrets
 
+from dotenv import load_dotenv
+
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(APP_ROOT, ".env"))
+
 from flask import Flask, redirect, session, url_for
 
 from database import close_db, conn, get_db
@@ -12,7 +17,6 @@ from services.file_storage import unzip_file
 from services.pending_attendance import _clear_pending_attendance, _load_pending_attendance, _store_pending_attendance
 from services.security import role_required
 
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 from services.security import register_security
 from routes.auth import bp as auth_bp
 from routes.admin import bp as admin_bp

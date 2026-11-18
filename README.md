@@ -14,6 +14,8 @@ A Flask + MySQL attendance application using **OpenCV Haar Cascade face detectio
 
 ## Setup
 
+For the exact Windows college-demo sequence, see SUBMISSION_RUNBOOK.md.
+
 Use Python 3.10 or 3.11 and MySQL 8.x.
 
 ```bash
@@ -21,6 +23,7 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+Copy .env.example to .env and edit the database credentials and secret before running.
 ```
 
 Create the database using `database_creation.sql` on a **new or backed-up database**. The schema script is intended to create tables and triggers only; create an administrator account with your own credentials after setup. Never run destructive SQL against a database containing real attendance records.

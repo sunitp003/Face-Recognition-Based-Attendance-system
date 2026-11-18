@@ -26,7 +26,7 @@ from services.pending_attendance import _clear_pending_attendance, _load_pending
 from services.file_storage import unzip_file
 
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-bp = Blueprint("PLACEHOLDER", __name__)
+bp = Blueprint("faculty", __name__)
 
 @bp.route("/faculty", methods=["GET", "POST"])
 @role_required("Faculty")

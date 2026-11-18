@@ -50,6 +50,7 @@ from services.security import register_security, role_required
 register_security(app)
 
 from database import close_db, conn, get_db
+app.teardown_appcontext(close_db)
 
 from services.pending_attendance import (
     _clear_pending_attendance,

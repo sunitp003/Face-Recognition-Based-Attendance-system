@@ -12,6 +12,9 @@ This refactor is intentionally additive and keeps the existing runtime contract.
 
 ## Service boundaries
 
+The Flask application is created by `create_app()` and registers five blueprints: Authentication (`auth`), Admin (`admin`), Student (`student`), Faculty (`faculty`) and general pages (`pages`). Legacy endpoint aliases are registered so existing `url_for()` calls and external integrations continue to resolve.
+
+
 | Module | Responsibility |
 | --- | --- |
 | `services/model_training.py` | Existing Haar Cascade/LBPH training implementation |

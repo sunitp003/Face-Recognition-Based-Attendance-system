@@ -11,6 +11,7 @@ import numpy as np
 
 import modelTrain
 import recognition
+from services import face_recognition
 
 
 class RecognitionHelperTests(unittest.TestCase):
@@ -115,13 +116,13 @@ class RecognitionHelperTests(unittest.TestCase):
         fake_image = np.zeros((140, 140, 3), dtype=np.uint8)
         fake_gray = np.full((140, 140), 100, dtype=np.uint8)
         fake_face = np.full((200, 200), 100, dtype=np.uint8)
-        with patch.object(recognition, "_load_recognizer", return_value=(FakeRecognizer(), {0: "STU001"})):
-            with patch.object(recognition, "_face_cascade", return_value=OneFaceDetector()):
+        with patch.object(face_recognition, "_load_recognizer", return_value=(FakeRecognizer(), {0: "STU001"})):
+            with patch.object(face_recognition, "_face_cascade", return_value=OneFaceDetector()):
                 with patch("recognition.cv2.imread", return_value=fake_image):
                     with patch("recognition.cv2.cvtColor", return_value=fake_gray):
                         with patch("recognition.cv2.equalizeHist", return_value=fake_gray):
-                            with patch.object(recognition, "_quality_ok", return_value=True):
-                                with patch.object(recognition, "preprocess_face", return_value=fake_face):
+                            with patch.object(face_recognition, "_quality_ok", return_value=True):
+                                with patch.object(face_recognition, "preprocess_face", return_value=fake_face):
                                     result = recognition.recognize_attendance_images(
                                         "/unused", ["photo1.jpg", "photo2.jpg"], "it", "2024"
                                     )

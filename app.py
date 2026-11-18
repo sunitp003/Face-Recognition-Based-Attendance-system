@@ -80,76 +80,13 @@ def protect_post_requests():
             abort(400, description="Invalid or missing CSRF token")
 
 
-# Request-scoped connections prevent concurrent requests sharing one connection.
-def get_db():
-    if "db" not in g:
-        g.db = MySQLdb.connect(
-            host=os.environ.get("DB_HOST", "127.0.0.1"),
-            port=int(os.environ.get("DB_PORT", "3306")),
-            user=os.environ.get("DB_USER", "root"),
-            password=os.environ.get("DB_PASSWORD", ""),
-            db=os.environ.get("DB_NAME", "attendance_database1"),
-            charset="utf8mb4",
-        )
-        g.db.autocommit(True)
-    return g.db
+from database import close_db, conn, get_db
 
-def close_db(error=None):
-    database = g.pop("db", None)
-    if database is not None:
-        database.close()
-
-app.teardown_appcontext(close_db)
-conn = LocalProxy(get_db)
-
-PENDING_DIR = os.path.join(APP_ROOT, "instance", "pending_attendance")
-
-def _store_pending_attendance(data):
-    os.makedirs(PENDING_DIR, exist_ok=True)
-    token = uuid.uuid4().hex
-    temporary_path = os.path.join(PENDING_DIR, token + ".tmp")
-    final_path = os.path.join(PENDING_DIR, token + ".json")
-    # Remove abandoned review files so interrupted sessions do not accumulate.
-    now = time.time()
-    for filename in os.listdir(PENDING_DIR):
-        if not filename.endswith(".json"):
-            continue
-        stale_path = os.path.join(PENDING_DIR, filename)
-        try:
-            if now - os.path.getmtime(stale_path) > 7200:
-                os.remove(stale_path)
-        except OSError:
-            logging.warning("Could not clean expired pending review: %s", stale_path)
-    payload = dict(data)
-    payload["created_at"] = now
-    with open(temporary_path, "w", encoding="utf-8") as file:
-        json.dump(payload, file)
-    os.replace(temporary_path, final_path)
-    session["pending_attendance_id"] = token
-
-def _load_pending_attendance():
-    token = session.get("pending_attendance_id", "")
-    if not re.fullmatch(r"[a-f0-9]{32}", str(token)):
-        return None
-    path = os.path.join(PENDING_DIR, token + ".json")
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            payload = json.load(file)
-        if time.time() - float(payload.get("created_at", 0)) > 7200:
-            _clear_pending_attendance()
-            return None
-        return payload
-    except (OSError, ValueError, TypeError):
-        return None
-
-def _clear_pending_attendance():
-    token = session.pop("pending_attendance_id", None)
-    if token and re.fullmatch(r"[a-f0-9]{32}", str(token)):
-        try:
-            os.remove(os.path.join(PENDING_DIR, token + ".json"))
-        except FileNotFoundError:
-            pass
-
+from services.pending_attendance import (
+    _clear_pending_attendance,
+    _load_pending_attendance,
+    _store_pending_attendance,
+)
 
 
 
@@ -448,54 +385,7 @@ def addRecord():
 # --------------------------- STUDENT REGISTRATION -------------------------- #
 
 
-def unzip_file(zip_src, dst_dir, roll_id):
-    """Extract a bounded image set, then atomically replace previous samples."""
-    if not zipfile.is_zipfile(zip_src):
-        return None
-    os.makedirs(dst_dir, exist_ok=True)
-    extract_to = os.path.join(dst_dir, str(roll_id))
-    staging = os.path.join(dst_dir, f".{roll_id}.{uuid.uuid4().hex}.tmp")
-    backup = os.path.join(dst_dir, f".{roll_id}.{uuid.uuid4().hex}.bak")
-    allowed = (".jpg", ".jpeg", ".png")
-    total_bytes = 0
-    saved = 0
-    os.makedirs(staging, exist_ok=False)
-    try:
-        with zipfile.ZipFile(zip_src, "r") as archive:
-            for item in archive.infolist():
-                if item.is_dir():
-                    continue
-                filename = secure_filename(os.path.basename(item.filename))
-                if not filename or not filename.lower().endswith(allowed):
-                    continue
-                if item.file_size <= 0 or item.file_size > 8 * 1024 * 1024:
-                    continue
-                total_bytes += item.file_size
-                if total_bytes > 40 * 1024 * 1024 or saved >= 200:
-                    break
-                destination = os.path.join(staging, f"{saved + 1}_{filename}")
-                with archive.open(item) as source, open(destination, "wb") as target:
-                    shutil.copyfileobj(source, target)
-                saved += 1
-        if not saved:
-            return None
-        if os.path.exists(extract_to):
-            os.replace(extract_to, backup)
-        try:
-            os.replace(staging, extract_to)
-        except OSError:
-            if os.path.exists(backup):
-                os.replace(backup, extract_to)
-            raise
-        if os.path.exists(backup):
-            shutil.rmtree(backup, ignore_errors=True)
-        return extract_to
-    except (zipfile.BadZipFile, OSError, ValueError):
-        logging.exception("Student image ZIP extraction failed")
-        return None
-    finally:
-        if os.path.exists(staging):
-            shutil.rmtree(staging, ignore_errors=True)
+from services.file_storage import unzip_file
 
 @app.route("/studentReg", methods=["GET", "POST"])
 @role_required("Student")

@@ -232,7 +232,18 @@ def recognize_attendance(root, video_path, branch, batch, max_duration_seconds=N
         logging.error("Live camera recognition requires a bounded duration (1-900 seconds)")
         return None
 
-    cap = cv2.VideoCapture(video_path)
+    if is_live_source:
+        try:
+            timeout_params = [
+                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000,
+                cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000,
+            ]
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, timeout_params)
+        except (cv2.error, TypeError, AttributeError):
+            logging.exception("OpenCV backend does not support bounded RTSP timeouts")
+            return None
+    else:
+        cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logging.error("Unable to open video/camera source")
         cap.release()

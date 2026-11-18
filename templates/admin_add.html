@@ -177,9 +177,9 @@
         <form action="/admin/addRecord" method="POST">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="radio-container">
-                <input type="radio" name="add_id" value="Student" id="student" required onclick="enableDepartment()">
+                <input type="radio" name="add_id" value="Student" id="student" required>
                 <label for="student">Student</label>
-                <input type="radio" name="add_id" value="Faculty" id="faculty" required onclick="enableDepartment()">
+                <input type="radio" name="add_id" value="Faculty" id="faculty" required>
                 <label for="faculty">Faculty</label>
             </div>
         
@@ -201,13 +201,7 @@
         </form>
     </div>
 
-    <script>
-        function enableDepartment() {
-            let departmentField = document.getElementById("departmentField");
-            departmentField.disabled = false;
-            departmentField.style.backgroundColor = "#fff"; // Make it editable
-        }
-    </script>
+    <script></script>
 
 </body>
 </html>

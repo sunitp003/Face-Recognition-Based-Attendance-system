@@ -50,7 +50,7 @@ def studentReg():
         zip_file = request.files.get("file")
         if not branch or not batch or not zip_file or not zip_file.filename:
             return render_template("registration.html", msg="Please fill all fields and upload a ZIP of face images.")
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,50}", branch):
             return render_template("registration.html", msg="Invalid batch or branch.")
         if not zip_file.filename.lower().endswith(".zip"):
             return render_template("registration.html", msg="Please upload a ZIP file.")

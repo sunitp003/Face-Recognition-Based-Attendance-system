@@ -25,11 +25,6 @@ def csrf_token():
         session["_csrf_token"] = token
     return token
 
-@app.context_processor
-def inject_csrf_token():
-    return {"csrf_token": csrf_token}
-
-@app.before_request
 def protect_post_requests():
     if request.method == "POST":
         expected = session.get("_csrf_token", "")

@@ -34,7 +34,7 @@ def admin():
     if request.method == "POST":
         batch = request.values.get("batch", "").strip()
         branch = request.values.get("branch", "").strip()
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,30}", branch):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,50}", branch):
             return render_template("dashB_admin.html", msg="Invalid batch or branch.")
         if batch and branch:
             ret = modelTrain.TrainImages(APP_ROOT, batch, branch)

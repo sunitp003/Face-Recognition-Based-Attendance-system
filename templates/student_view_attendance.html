@@ -113,34 +113,13 @@
 
 
             <label><b></b></label>
-            <select name="year" id="year" required>
-                <option value="">-- Select Year --</option>
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
-            </select>
-
-
-            <label for="branch"><b></b></label>
-            <select name="branch" id="branch" required>
-                <option value="">--Select Branch--</option>
-                <option value="ce">CE</option>
-                <option value="it">IT</option>
-                <option value="me">ME</option>
-                <option value="ec">EC</option>
-                <option value="ee">EE</option>   
-            </select>
-                <label for="subject"><b></b></label>
+            <label for="subject"><b>Subject:</b></label>
             <select name="subject" id="subject" required>
                 <option value="">-- Select Subject --</option>
+                {% for subject in subjects %}
+                <option value="{{ subject }}">{{ subject }}</option>
+                {% endfor %}
             </select>
-                
-
-          
-
-
-
 
             <label><b>From Date:</b></label>
             <input type="date" name="from" required>
@@ -181,78 +160,8 @@
 
 
 
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            let batchSelect = document.getElementById("batchSelect");
-            let currentYear = new Date().getFullYear();
-            
-            // Populate Batch Dropdown
-            // for (let year = 2024; year <= currentYear; year++) {
-            //     let option = document.createElement("option");
-            //     option.value = year;
-            //     option.textContent = year;
-            //     batchSelect.appendChild(option);
-            // }
     
-            let subjectDropdown = document.getElementById("subject");
-            let yearDropdown = document.getElementById("year");
-            let branchDropdown = document.getElementById("branch");
     
-            // Subject List
-            const subjects = {
-                "ce": { 
-                    "1": ["M1", "M2", "Physics", "Chemistry"], 
-                    "2": ["M3", "DSA", "COA", "DBMS"], 
-                    "3": ["OS", "CN", "TOC", "SE"], 
-                    "4": ["AI", "ML", "Cloud Computing", "Big Data"] 
-                },
-                "it": { 
-                    "1": ["Maths", "Physics", "C Programming"], 
-                    "2": ["Data Structures", "DBMS", "OOP"], 
-                    "3": ["Software Engineering", "Networks", "Cyber Security"], 
-                    "4": ["Cloud Computing", "Blockchain", "Big Data"] 
-                },
-                "me": { 
-                    "1": ["Physics", "Chemistry", "Graphics"], 
-                    "2": ["Thermodynamics", "Mechanics", "Fluid Mechanics"], 
-                    "3": ["Heat Transfer", "Dynamics", "Manufacturing"], 
-                    "4": ["Automobile", "Robotics", "Production"] 
-                },
-                "ec": {
-                    "1": ["Basic Electronics", "Maths", "Physics"],
-                    "2": ["Analog Circuits", "Digital Electronics", "Signals & Systems"],
-                    "3": ["Microprocessors", "VLSI", "Embedded Systems"],
-                    "4": ["Wireless Communication", "Antenna Design", "IoT"]
-                },
-                "ee": {
-                    "1": ["Electrical Circuits", "Maths", "Physics"],
-                    "2": ["Machines", "Power Systems", "Electromagnetics"],
-                    "3": ["Control Systems", "Power Electronics", "Energy Management"],
-                    "4": ["Smart Grid", "Renewable Energy", "High Voltage Engineering"]
-                }
-            };
-    
-            // Function to Update Subject Dropdown
-            function updateSubjects() {
-                let branch = branchDropdown.value;
-                let year = yearDropdown.value;
-                subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
-    
-                if (subjects[branch] && subjects[branch][year]) {
-                    subjects[branch][year].forEach(sub => {
-                        let option = document.createElement("option");
-                        option.value = sub;
-                        option.textContent = sub;
-                        subjectDropdown.appendChild(option);
-                    });
-                }
-            }
-    
-            // Event Listeners for Branch and Year Selection
-            branchDropdown.addEventListener("change", updateSubjects);
-            yearDropdown.addEventListener("change", updateSubjects);
-        });
-    </script>
 
 
 </body>

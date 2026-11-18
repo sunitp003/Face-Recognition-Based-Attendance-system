@@ -65,7 +65,7 @@ def studentReg():
             if os.path.exists(zip_src):
                 os.remove(zip_src)
         if not extracted_folder:
-            return render_template("registration.html", msg="No valid JPG/PNG images found in the ZIP.")
+            return render_template("registration.html", msg="ZIP rejected. Upload 1–30 non-empty JPG/JPEG/PNG images, each no larger than 8 MB and 40 MB total uncompressed.")
         cursor.execute(
             "UPDATE student_login SET branch=%s, batch=%s WHERE roll_no=%s",
             (branch, batch, roll_id)

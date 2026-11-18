@@ -17,6 +17,7 @@ def unzip_file(zip_src, dst_dir, roll_id):
     allowed = (".jpg", ".jpeg", ".png")
     total_bytes = 0
     saved = 0
+    image_entries = 0
     os.makedirs(staging, exist_ok=False)
     try:
         with zipfile.ZipFile(zip_src, "r") as archive:
@@ -26,11 +27,14 @@ def unzip_file(zip_src, dst_dir, roll_id):
                 filename = secure_filename(os.path.basename(item.filename))
                 if not filename or not filename.lower().endswith(allowed):
                     continue
+                image_entries += 1
+                if image_entries > 30:
+                    raise ValueError("ZIP may contain at most 30 JPG/JPEG/PNG images.")
                 if item.file_size <= 0 or item.file_size > 8 * 1024 * 1024:
-                    continue
+                    raise ValueError("Each image must be non-empty and no larger than 8 MB.")
                 total_bytes += item.file_size
-                if total_bytes > 40 * 1024 * 1024 or saved >= 200:
-                    break
+                if total_bytes > 40 * 1024 * 1024:
+                    raise ValueError("The uncompressed image total must not exceed 40 MB.")
                 destination = os.path.join(staging, f"{saved + 1}_{filename}")
                 with archive.open(item) as source, open(destination, "wb") as target:
                     shutil.copyfileobj(source, target)
@@ -48,8 +52,8 @@ def unzip_file(zip_src, dst_dir, roll_id):
         if os.path.exists(backup):
             shutil.rmtree(backup, ignore_errors=True)
         return extract_to
-    except (zipfile.BadZipFile, OSError, ValueError):
-        logging.exception("Student image ZIP extraction failed")
+    except (zipfile.BadZipFile, OSError, ValueError) as exc:
+        logging.warning("Student image ZIP rejected: %s", exc)
         return None
     finally:
         if os.path.exists(staging):

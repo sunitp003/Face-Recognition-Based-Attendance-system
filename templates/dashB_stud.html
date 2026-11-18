@@ -117,7 +117,7 @@
     <div class="navbar">
         <a href="/">Home</a>
         <a href="{{ url_for('logout') }}">Logout</a>
-        <a href="/faculty">Dashboard</a>
+        <a href="/studentDashboard">Dashboard</a>
        
     
     </div>
@@ -132,64 +132,14 @@
         {% endif %}
         
         <h2>View Attendance</h2>
-        <form action="/studentDashboard" method="POST">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="roll" placeholder="Roll Number" required>
-            <select name="branch" id="branch" required>
-                <option value="">-- Select Branch --</option>
-                <option value="ce">CE</option>
-                <option value="it">IT</option>
-                <option value="me">ME</option>
-                <option value="ec">EC</option>
-                <option value="ee">EE</option>
-            </select>
-            <select name="year" id="year" required>
-                <option value="">-- Select Year --</option>
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
-            </select>
-            
-            <label for="subject"><b></b></label>
-            <select name="subject" id="subject" required>
-                <option value="">-- Select Subject --</option>
-            </select>
-            
-            </select>
-            <input type="date" name="from" required>
-            <input type="date" name="to" required>
-            <button type="submit" class="btn-submit">View</button>
-        </form>
+        <p>Your attendance is linked to your signed-in student account.</p>
+        <a class="btn-submit" href="{{ url_for('student_view_attendance') }}">View My Attendance</a>
+
     </div>
 
     <div id="container" class="wrap"></div>
-    <script>
-        document.getElementById("year").addEventListener("change", function() {
-    const branch = document.getElementById("branch").value.toUpperCase(); // ✅ Convert to uppercase
-    const year = this.value;
-    const subjectDropdown = document.getElementById("subject");
-
-    const subjects = {
-        'CE': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["M3", "DSA", "COA", "DBMS"], '3': ["OS", "CN", "TOC", "SE"], '4': ["AI", "ML", "Cloud Computing", "Big Data"]},
-        'IT': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["DSA", "OOPS", "DBMS", "Computer Networks"], '3': ["OS", "Web Technologies", "AI", "Cybersecurity"], '4': ["Blockchain", "IoT", "Data Science", "DevOps"]},
-        'ME': {'1': ["Engineering Mechanics", "M1", "Physics", "Chemistry"], '2': ["Thermodynamics", "Fluid Mechanics", "SOM", "Material Science"], '3': ["Manufacturing", "IC Engines", "Robotics", "Heat Transfer"], '4': ["Automobile Engineering", "Mechatronics", "Advanced Robotics", "Computational Fluid Dynamics"]},
-        'EC': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["Digital Electronics", "Microprocessors", "Signals & Systems", "Communication Networks"], '3': ["Embedded Systems", "VLSI", "Wireless Communication", "DSP"], '4': ["IoT", "Optical Fiber Communication", "Radar Systems", "Satellite Communication"]}
-    };
-
-    subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
     
-    if (subjects[branch] && subjects[branch][year]) { // ✅ Ensure branch & year exist
-        subjects[branch][year].forEach(sub => {
-            const option = document.createElement("option");
-            option.value = sub;
-            option.textContent = sub;
-            subjectDropdown.appendChild(option);
-        
-                });
-            }
-        });
-    </script>
+
 </body>
 
 </html>

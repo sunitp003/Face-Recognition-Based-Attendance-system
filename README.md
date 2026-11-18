@@ -4,8 +4,8 @@ A Flask + MySQL attendance application using **OpenCV Haar Cascade face detectio
 
 ## Recognition and attendance workflow
 
-1. Each student uploads a ZIP containing clear, front-facing photos. Images are extracted to `uploads/<batch>/<branch>/<roll_no>/`.
-2. Admin trains the model for the exact batch and branch.
+1. Each student uploads a ZIP containing 10–20 clear, varied photos (up to 30 JPG/JPEG/PNG files; 40 MB uncompressed total). Images are extracted to `uploads/<batch>/<branch>/<roll_no>/`.
+2. Admin trains the model for the exact batch and branch. The optional legacy `dataset_prepare.py` helper writes to `dataset/` and is not part of this active training path.
 3. Training accepts only images containing exactly one detectable face, rejects blurry or badly lit images, removes exact duplicate face crops, requires at least five usable images per student, and caps each student's training set to 30 images.
 4. The model is saved as `models/<batch>/<branch>/trainer.yml`; `labels.json` stores the exact model-label-to-roll-number mapping. Keep these files together.
 5. Faculty selects one of three sources: up to 30 classroom photos (JPG/JPEG/PNG), one MP4 classroom video, or a server-configured RTSP college CCTV stream. Recognition uses Haar Cascade + LBPH and rejects low-quality face crops. Video/CCTV processing is bounded by a maximum duration.
@@ -72,13 +72,13 @@ The hardened branch adds the following safeguards:
 - A request-scoped MySQL connection is opened only when a request needs the database and closed during Flask teardown. Do not share a connection between worker threads.
 - Every POST form carries a session-bound CSRF token. Keep the session secret stable across restarts and all application workers.
 - Production startup refuses to run without `SECRET_KEY`. Set `APP_ENV=production`, `SECRET_KEY` and `COOKIE_SECURE=1` behind HTTPS.
-- Uploaded MP4 files are checked for an MP4 file-type marker, limited to 50 MB and bounded processing duration, then removed after recognition processing. Photo uploads are limited to 30 images and 50 MB total. CCTV is an optional server-configured, bounded RTSP source. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
+- Uploaded MP4 files are checked for an MP4 file-type marker, limited to 50 MB and bounded processing duration, then removed after recognition processing. Photo uploads are limited to 30 images and 50 MB total. Student ZIPs are limited to 30 image files and 40 MB uncompressed; an oversized archive is rejected in full rather than partially imported. CCTV is an optional server-configured, bounded RTSP source. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
 - Pending faculty reviews are stored server-side rather than in the browser cookie and expire after two hours. All workers must share the same persistent application filesystem for this temporary storage.
 - Excel downloads are generated in memory to avoid concurrent requests overwriting one shared filename.
 - Admin deletion is blocked when a student or faculty member has historical attendance, preventing accidental cascade deletion of academic records.
 - Training and recognition now measure brightness/blur before histogram equalization. Model and label files are paired with a SHA-256 manifest; incomplete or mismatched bundles are rejected.
 - Recognition threshold parsing is validated and the default is deliberately stricter. Five separate one-second windows are required by default. These are conservative starting values, not a promise of accuracy.
-- GitHub Actions compiles the project and runs unit regression tests.
+- GitHub Actions compiles the project and runs regression tests for storage boundaries, compatibility exports, database lifecycle and registered routes.
 
 ### Important deployment steps after upgrading
 

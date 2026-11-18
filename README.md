@@ -5,7 +5,7 @@ A Flask + MySQL attendance application using **OpenCV Haar Cascade face detectio
 ## Recognition and attendance workflow
 
 1. Each student uploads a ZIP containing 10–20 clear, varied photos (up to 30 JPG/JPEG/PNG files; 40 MB uncompressed total). Images are extracted to `uploads/<batch>/<branch>/<roll_no>/`.
-2. Admin trains the model for the exact batch and branch.
+2. Admin trains the model for the exact batch and branch. The optional legacy `dataset_prepare.py` helper writes to `dataset/` and is not part of this active training path.
 3. Training accepts only images containing exactly one detectable face, rejects blurry or badly lit images, removes exact duplicate face crops, requires at least five usable images per student, and caps each student's training set to 30 images.
 4. The model is saved as `models/<batch>/<branch>/trainer.yml`; `labels.json` stores the exact model-label-to-roll-number mapping. Keep these files together.
 5. Faculty selects one of three sources: up to 30 classroom photos (JPG/JPEG/PNG), one MP4 classroom video, or a server-configured RTSP college CCTV stream. Recognition uses Haar Cascade + LBPH and rejects low-quality face crops. Video/CCTV processing is bounded by a maximum duration.

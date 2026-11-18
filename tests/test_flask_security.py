@@ -42,7 +42,7 @@ class CsrfProtectionTests(unittest.TestCase):
             session["role"] = "Admin"
             session["must_change_password"] = True
             session["_csrf_token"] = "test-csrf-token"
-        with patch.object(application, "conn", fake_connection):
+        with patch("routes.auth.conn", fake_connection):
             response = self.client.post(
                 "/change-password",
                 data={

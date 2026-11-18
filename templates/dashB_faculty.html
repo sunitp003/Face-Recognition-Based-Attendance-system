@@ -150,36 +150,74 @@
             <label for="date"><b></b></label>
             <input type="date" name="date" required>
             
-            <h4>Note: Upload an MP4 video file</h4>
-            <input type="file" name="file" accept=".mp4" required>
+            <label for="source_mode"><b>Attendance Source</b></label>
+            <select name="source_mode" id="source_mode" required>
+                <option value="video">Upload one classroom video</option>
+                <option value="photos">Upload multiple classroom photos</option>
+                {% if cctv_enabled %}
+                <option value="cctv">Use configured college CCTV</option>
+                {% else %}
+                <option value="cctv" disabled>College CCTV (not configured)</option>
+                {% endif %}
+            </select>
 
-            <button type="submit" class="btn-submit">Upload</button>
+            <div id="uploadHelp">
+                <h4 id="uploadTitle">Upload one MP4 classroom video</h4>
+                <p id="uploadDescription">Record the classroom from different angles so students' faces are visible.</p>
+                <input type="file" name="files" id="mediaFiles" accept="video/mp4,.mp4" required>
+            </div>
+            <div id="cctvHelp" hidden>
+                <h4>Configured CCTV camera</h4>
+                <p>The server will capture a limited live window from the administrator-configured camera. Do not enter camera passwords here.</p>
+            </div>
+
+            <button type="submit" class="btn-submit" id="submitButton">Process Attendance</button>
         </form>
     </div>
 
     <script>
+        const sourceMode = document.getElementById("source_mode");
+        const mediaFiles = document.getElementById("mediaFiles");
+        const uploadHelp = document.getElementById("uploadHelp");
+        const cctvHelp = document.getElementById("cctvHelp");
+        const uploadTitle = document.getElementById("uploadTitle");
+        const uploadDescription = document.getElementById("uploadDescription");
+
+        function updateSourceMode() {
+            const mode = sourceMode.value;
+            const useCctv = mode === "cctv";
+            uploadHelp.hidden = useCctv;
+            cctvHelp.hidden = !useCctv;
+            mediaFiles.required = !useCctv;
+            mediaFiles.multiple = mode === "photos";
+            mediaFiles.accept = mode === "photos" ? "image/jpeg,image/png,.jpg,.jpeg,.png" : "video/mp4,.mp4";
+            uploadTitle.textContent = mode === "photos" ? "Select up to 30 classroom photos" : "Upload one MP4 classroom video";
+            uploadDescription.textContent = mode === "photos"
+                ? "Choose several clear photos from different angles. A single wide photo may not show every face clearly."
+                : "Record the classroom from different angles so students' faces are visible.";
+            mediaFiles.value = "";
+        }
+        sourceMode.addEventListener("change", updateSourceMode);
+        updateSourceMode();
+
         document.getElementById("year").addEventListener("change", function() {
-    const branch = document.getElementById("branch").value.toUpperCase(); // ✅ Convert to uppercase
-    const year = this.value;
-    const subjectDropdown = document.getElementById("subject");
-
-    const subjects = {
-        'CE': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["M3", "DSA", "COA", "DBMS"], '3': ["OS", "CN", "TOC", "SE"], '4': ["AI", "ML", "Cloud Computing", "Big Data"]},
-        'IT': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["DSA", "OOPS", "DBMS", "Computer Networks"], '3': ["OS", "Web Technologies", "AI", "Cybersecurity"], '4': ["Blockchain", "IoT", "Data Science", "DevOps"]},
-        'ME': {'1': ["Engineering Mechanics", "M1", "Physics", "Chemistry"], '2': ["Thermodynamics", "Fluid Mechanics", "SOM", "Material Science"], '3': ["Manufacturing", "IC Engines", "Robotics", "Heat Transfer"], '4': ["Automobile Engineering", "Mechatronics", "Advanced Robotics", "Computational Fluid Dynamics"]},
-        'EC': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["Digital Electronics", "Microprocessors", "Signals & Systems", "Communication Networks"], '3': ["Embedded Systems", "VLSI", "Wireless Communication", "DSP"], '4': ["IoT", "Optical Fiber Communication", "Radar Systems", "Satellite Communication"]},
-        'EE': {'1': ["Electrical Circuits", "Maths", "Physics"], '2': ["Machines", "Power Systems", "Electromagnetics"], '3': ["Control Systems", "Power Electronics", "Energy Management"], '4': ["Smart Grid", "Renewable Energy", "High Voltage Engineering"]}
-    };
-
-    subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
-    
-    if (subjects[branch] && subjects[branch][year]) { // ✅ Ensure branch & year exist
-        subjects[branch][year].forEach(sub => {
-            const option = document.createElement("option");
-            option.value = sub;
-            option.textContent = sub;
-            subjectDropdown.appendChild(option);
-        
+            const branch = document.getElementById("branch").value.toUpperCase();
+            const year = this.value;
+            const subjectDropdown = document.getElementById("subject");
+            const subjects = {
+                'CE': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["M3", "DSA", "COA", "DBMS"], '3': ["OS", "CN", "TOC", "SE"], '4': ["AI", "ML", "Cloud Computing", "Big Data"]},
+                'IT': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["DSA", "OOPS", "DBMS", "Computer Networks"], '3': ["OS", "Web Technologies", "AI", "Cybersecurity"], '4': ["Blockchain", "IoT", "Data Science", "DevOps"]},
+                'ME': {'1': ["Engineering Mechanics", "M1", "Physics", "Chemistry"], '2': ["Thermodynamics", "Fluid Mechanics", "SOM", "Material Science"], '3': ["Manufacturing", "IC Engines", "Robotics", "Heat Transfer"], '4': ["Automobile Engineering", "Mechatronics", "Advanced Robotics", "Computational Fluid Dynamics"]},
+                'EC': {'1': ["M1", "M2", "Physics", "Chemistry"], '2': ["Digital Electronics", "Microprocessors", "Signals & Systems", "Communication Networks"], '3': ["Embedded Systems", "VLSI", "Wireless Communication", "DSP"], '4': ["IoT", "Optical Fiber Communication", "Radar Systems", "Satellite Communication"]},
+                'EE': {'1': ["Electrical Circuits", "Maths", "Physics"], '2': ["Machines", "Power Systems", "Electromagnetics"], '3': ["Control Systems", "Power Electronics", "Energy Management"], '4': ["Smart Grid", "Renewable Energy", "High Voltage Engineering"]}
+            };
+            subjectDropdown.innerHTML = "<option value=''>-- Select Subject --</option>";
+            if (subjects[branch] && subjects[branch][year]) {
+                subjects[branch][year].forEach(sub => {
+                    const option = document.createElement("option");
+                    option.value = sub;
+                    option.textContent = sub;
+                    subjectDropdown.appendChild(option);
                 });
             }
         });

@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import os
+import time
 from collections import defaultdict
 
 import cv2
@@ -120,19 +121,14 @@ def _aggregate_votes(votes, threshold, min_votes):
     return sorted(set(accepted))
 
 
-def recognize_attendance(root, video_path, branch, batch):
+def _load_recognizer(root, branch, batch):
     model_dir = os.path.join(root, "models", str(batch), str(branch))
     model_path = os.path.join(model_dir, "trainer.yml")
     labels_path = os.path.join(model_dir, "labels.json")
     manifest_path = os.path.join(model_dir, "manifest.json")
-
     if not _verify_model_bundle(model_path, labels_path, manifest_path):
-        logging.error(
-            "Recognition model bundle is missing or inconsistent. "
-            "Retrain this batch/branch before taking attendance."
-        )
+        logging.error("Recognition model bundle is missing or inconsistent.")
         return None
-
     try:
         with open(labels_path, "r", encoding="utf-8") as file:
             raw_labels = json.load(file)
@@ -143,17 +139,113 @@ def recognize_attendance(root, video_path, branch, batch):
             raise ValueError("labels map contains duplicate student IDs")
         recognizer = cv2.face.LBPHFaceRecognizer_create()
         recognizer.read(model_path)
+        return recognizer, label_map
     except Exception:
         logging.exception("Unable to load trained LBPH model")
         return None
 
-    if not os.path.isfile(video_path):
-        logging.error("Video not found: %s", video_path)
+
+def recognize_attendance_images(root, image_paths, branch, batch):
+    """Recognize students across a set of teacher-uploaded classroom photos.
+
+    Every distinct uploaded photo contributes at most one vote per student.
+    Results are suggestions only and must be reviewed by faculty.
+    """
+    loaded = _load_recognizer(root, branch, batch)
+    if loaded is None:
+        return None
+    recognizer, label_map = loaded
+    try:
+        detector = _face_cascade()
+    except Exception:
+        logging.exception("Unable to initialize face detector")
         return None
 
-    cap = cv2.VideoCapture(video_path)
+    threshold = _positive_env_float(
+        "LBPH_DISTANCE_THRESHOLD", DEFAULT_DISTANCE_THRESHOLD, minimum=1.0
+    )
+    votes = defaultdict(dict)
+    processed_images = 0
+    for image_index, image_path in enumerate(image_paths):
+        image = cv2.imread(image_path)
+        if image is None:
+            logging.warning("Skipping unreadable uploaded image")
+            continue
+        processed_images += 1
+        raw_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        detection_gray = cv2.equalizeHist(raw_gray)
+        faces = detector.detectMultiScale(
+            detection_gray,
+            scaleFactor=1.1,
+            minNeighbors=7,
+            minSize=(MIN_FACE_SIZE, MIN_FACE_SIZE),
+        )
+        for x, y, width, height in faces:
+            raw_face = raw_gray[y:y + height, x:x + width]
+            if not _quality_ok(raw_face):
+                continue
+            crop = preprocess_face(raw_face)
+            if crop is None:
+                continue
+            try:
+                label, distance = recognizer.predict(crop)
+            except cv2.error:
+                logging.exception("LBPH prediction failed for an uploaded image")
+                continue
+            student_id = label_map.get(int(label))
+            if student_id is None or not np.isfinite(distance):
+                continue
+            distance = float(distance)
+            if distance <= threshold:
+                current = votes[student_id].get(image_index)
+                if current is None or distance < current:
+                    votes[student_id][image_index] = distance
+
+    if processed_images == 0:
+        return None
+    # A single group photo can contain the entire class. Use one photo vote,
+    # then rely on the mandatory faculty review rather than silently marking.
+    accepted = _aggregate_votes(votes, threshold, min_votes=1)
+    logging.info(
+        "Photo recognition complete: images=%d suggested_students=%d",
+        processed_images, len(accepted),
+    )
+    return accepted
+
+
+def recognize_attendance(root, video_path, branch, batch, max_duration_seconds=None):
+    """Recognize from an uploaded video or a configured live RTSP camera.
+
+    Live sources must be configured server-side; callers must never submit an
+    arbitrary camera URL. A finite duration prevents an endless RTSP request.
+    """
+    loaded = _load_recognizer(root, branch, batch)
+    if loaded is None:
+        return None
+    recognizer, label_map = loaded
+
+    is_live_source = isinstance(video_path, str) and video_path.lower().startswith("rtsp://")
+    if not is_live_source and not os.path.isfile(video_path):
+        logging.error("Video source not found")
+        return None
+    if is_live_source and (max_duration_seconds is None or not 1 <= max_duration_seconds <= 900):
+        logging.error("Live camera recognition requires a bounded duration (1-900 seconds)")
+        return None
+
+    if is_live_source:
+        try:
+            timeout_params = [
+                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000,
+                cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000,
+            ]
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG, timeout_params)
+        except (cv2.error, TypeError, AttributeError):
+            logging.exception("OpenCV backend does not support bounded RTSP timeouts")
+            return None
+    else:
+        cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        logging.error("Unable to open uploaded video")
+        logging.error("Unable to open video/camera source")
         cap.release()
         return None
 
@@ -176,6 +268,7 @@ def recognize_attendance(root, video_path, branch, batch):
     votes = defaultdict(dict)
     frame_index = 0
     sampled_frames = 0
+    started_at = time.monotonic()
     review_dir = os.path.join(
         root, "detected_faces", str(batch), str(branch), "review"
     )
@@ -183,14 +276,18 @@ def recognize_attendance(root, video_path, branch, batch):
 
     try:
         while True:
+            if max_duration_seconds is not None and time.monotonic() - started_at >= max_duration_seconds:
+                logging.info("Live CCTV capture duration reached")
+                break
             ok, frame = cap.read()
             if not ok:
+                if is_live_source:
+                    logging.warning("CCTV stream ended or became unavailable")
                 break
             frame_index += 1
             if frame_index % FRAME_SAMPLE_INTERVAL:
                 continue
             sampled_frames += 1
-
             raw_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             detection_gray = cv2.equalizeHist(raw_gray)
             faces = detector.detectMultiScale(
@@ -200,7 +297,6 @@ def recognize_attendance(root, video_path, branch, batch):
                 minSize=(MIN_FACE_SIZE, MIN_FACE_SIZE),
             )
             time_window = int((frame_index - 1) / fps)
-
             for face_index, (x, y, width, height) in enumerate(faces):
                 raw_face = raw_gray[y:y + height, x:x + width]
                 if not _quality_ok(raw_face):
@@ -208,13 +304,11 @@ def recognize_attendance(root, video_path, branch, batch):
                 crop = preprocess_face(raw_face)
                 if crop is None:
                     continue
-
                 try:
                     label, distance = recognizer.predict(crop)
                 except cv2.error:
                     logging.exception("LBPH prediction failed for a sampled face")
                     continue
-
                 student_id = label_map.get(int(label))
                 if student_id is None or not np.isfinite(distance):
                     continue
@@ -226,20 +320,20 @@ def recognize_attendance(root, video_path, branch, batch):
                     if not cv2.imwrite(review_path, crop):
                         logging.warning("Could not save rejected face review crop")
                     continue
-
                 current = votes[student_id].get(time_window)
                 if current is None or distance < current:
                     votes[student_id][time_window] = distance
     except Exception:
-        logging.exception("Video processing failed; no recognition result will be trusted")
+        logging.exception("Video/camera processing failed; no recognition result will be trusted")
         return None
     finally:
         cap.release()
 
+    if sampled_frames == 0:
+        return None
     accepted = _aggregate_votes(votes, threshold, min_votes)
     logging.info(
-        "Recognition complete: sampled_frames=%d accepted_students=%d "
-        "threshold=%.2f required_windows=%d",
+        "Recognition complete: sampled_frames=%d accepted_students=%d threshold=%.2f required_windows=%d",
         sampled_frames, len(accepted), threshold, min_votes,
     )
     return accepted

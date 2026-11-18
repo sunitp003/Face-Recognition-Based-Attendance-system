@@ -103,6 +103,39 @@ class RecognitionHelperTests(unittest.TestCase):
         with patch("modelTrain.cv2.imread", return_value=image):
             self.assertIsNone(modelTrain.process_image("unused.jpg", OneFaceDetector()))
 
+    def test_photo_recognition_returns_suggestion_from_group_photo(self):
+        class FakeRecognizer:
+            def predict(self, image):
+                return 0, 20.0
+
+        class OneFaceDetector:
+            def detectMultiScale(self, *args, **kwargs):
+                return [(10, 10, 100, 100)]
+
+        fake_image = np.zeros((140, 140, 3), dtype=np.uint8)
+        fake_gray = np.full((140, 140), 100, dtype=np.uint8)
+        fake_face = np.full((200, 200), 100, dtype=np.uint8)
+        with patch.object(recognition, "_load_recognizer", return_value=(FakeRecognizer(), {0: "STU001"})):
+            with patch.object(recognition, "_face_cascade", return_value=OneFaceDetector()):
+                with patch("recognition.cv2.imread", return_value=fake_image):
+                    with patch("recognition.cv2.cvtColor", return_value=fake_gray):
+                        with patch("recognition.cv2.equalizeHist", return_value=fake_gray):
+                            with patch.object(recognition, "_quality_ok", return_value=True):
+                                with patch.object(recognition, "preprocess_face", return_value=fake_face):
+                                    result = recognition.recognize_attendance_images(
+                                        "/unused", ["photo1.jpg", "photo2.jpg"], "it", "2024"
+                                    )
+        self.assertEqual(result, ["STU001"])
+
+    def test_live_camera_requires_a_bounded_capture_duration(self):
+        with patch.object(recognition, "_load_recognizer", return_value=(object(), {0: "STU001"})):
+            with patch("recognition.cv2.VideoCapture") as capture:
+                result = recognition.recognize_attendance(
+                    "/unused", "rtsp://camera.local/stream", "it", "2024"
+                )
+        self.assertIsNone(result)
+        capture.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,4 @@ def close_db(error=None):
     database = g.pop("db", None)
     if database is not None:
         database.close()
-
-app.teardown_appcontext(close_db)
 conn = LocalProxy(get_db)

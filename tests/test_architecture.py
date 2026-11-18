@@ -78,5 +78,43 @@ class CompatibilityTests(unittest.TestCase):
         self.assertTrue(expected.issubset(actual))
 
 
+class CrossLayerContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def read_repo_file(self, path):
+        with open(os.path.join(self.root, path), encoding="utf-8") as source:
+            return source.read()
+
+    def test_admin_batch_and_branch_limits_match_mysql_schema(self):
+        schema = self.read_repo_file("database_creation.sql")
+        admin_routes = self.read_repo_file("routes/admin.py")
+        student_routes = self.read_repo_file("routes/student.py")
+        faculty_routes = self.read_repo_file("routes/faculty.py")
+        self.assertRegex(schema, r"`batch` VARCHAR\(20\)")
+        self.assertRegex(schema, r"`branch` VARCHAR\(50\)")
+        for routes in (admin_routes, student_routes, faculty_routes):
+            self.assertIn(r"[A-Za-z0-9_-]{1,20}", routes)
+            self.assertIn(r"[A-Za-z0-9_-]{1,50}", routes)
+
+    def test_faculty_subject_forms_share_one_catalogue(self):
+        for path in ("templates/dashB_faculty.html", "templates/edit_att.html", "templates/faculty_view.html"):
+            self.assertIn("js/attendance_subjects.js", self.read_repo_file(path))
+
+    def test_student_history_uses_subjects_from_database(self):
+        template = self.read_repo_file("templates/student_view_attendance.html")
+        route = self.read_repo_file("routes/student.py")
+        self.assertIn("{% for subject in subjects %}", template)
+        self.assertIn("subjects=subjects", route)
+
+    def test_documented_capture_variables_exist_in_environment_example(self):
+        env_example = self.read_repo_file(".env.example")
+        readme = self.read_repo_file("README.md")
+        for variable in ("VIDEO_MAX_DURATION_SECONDS", "CCTV_RTSP_URL", "CCTV_CAPTURE_SECONDS"):
+            self.assertIn(variable, env_example)
+            self.assertIn(variable, readme)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -113,34 +113,13 @@
 
 
             <label><b></b></label>
-            <select name="year" id="year" required>
-                <option value="">-- Select Year --</option>
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
-            </select>
-
-
-            <label for="branch"><b></b></label>
-            <select name="branch" id="branch" required>
-                <option value="">--Select Branch--</option>
-                <option value="ce">CE</option>
-                <option value="it">IT</option>
-                <option value="me">ME</option>
-                <option value="ec">EC</option>
-                <option value="ee">EE</option>   
-            </select>
-                <label for="subject"><b></b></label>
+            <label for="subject"><b>Subject:</b></label>
             <select name="subject" id="subject" required>
                 <option value="">-- Select Subject --</option>
+                {% for subject in subjects %}
+                <option value="{{ subject }}">{{ subject }}</option>
+                {% endfor %}
             </select>
-                
-
-          
-
-
-
 
             <label><b>From Date:</b></label>
             <input type="date" name="from" required>
@@ -182,17 +161,7 @@
 
 
     
-    <script>
-      document.addEventListener("DOMContentLoaded", function () {
-        const branch = document.getElementById("branch");
-        const year = document.getElementById("year");
-        const subject = document.getElementById("subject");
-        const refresh = () => window.updateAttendanceSubjects(branch.value, year.value, subject);
-        branch.addEventListener("change", refresh);
-        year.addEventListener("change", refresh);
-        refresh();
-      });
-    </script>
+    
 
 
 </body>

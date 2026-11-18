@@ -46,39 +46,8 @@ if _is_production:
     if not app.config["SESSION_COOKIE_SECURE"]:
         raise RuntimeError("Set COOKIE_SECURE=1 when running behind HTTPS in production")
 
-def role_required(*allowed_roles):
-    """Protect routes using the authenticated role in the session."""
-    def decorator(view):
-        @wraps(view)
-        def wrapped(*args, **kwargs):
-            if session.get("role") not in allowed_roles or "user" not in session:
-                return redirect(url_for("index"))
-            if session.get("must_change_password") and request.endpoint != "change_password":
-                return redirect(url_for("change_password"))
-            return view(*args, **kwargs)
-        return wrapped
-    return decorator
-
-
-def csrf_token():
-    token = session.get("_csrf_token")
-    if not token:
-        token = secrets.token_urlsafe(32)
-        session["_csrf_token"] = token
-    return token
-
-@app.context_processor
-def inject_csrf_token():
-    return {"csrf_token": csrf_token}
-
-@app.before_request
-def protect_post_requests():
-    if request.method == "POST":
-        expected = session.get("_csrf_token", "")
-        supplied = request.form.get("_csrf_token", "") or request.headers.get("X-CSRF-Token", "")
-        if not expected or not supplied or not hmac.compare_digest(str(expected), str(supplied)):
-            abort(400, description="Invalid or missing CSRF token")
-
+from services.security import register_security, role_required
+register_security(app)
 
 from database import close_db, conn, get_db
 

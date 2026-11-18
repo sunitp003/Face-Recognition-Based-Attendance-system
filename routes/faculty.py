@@ -42,7 +42,7 @@ def faculty():
 
         if not all((fac_id, batch, branch, year, subject, date_value)):
             return render_template("dashB_faculty.html", msg="Please provide batch, branch, year, subject and attendance date.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", branch):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", batch) or not re.fullmatch(r"[A-Za-z0-9_-]{1,50}", branch):
             return render_template("dashB_faculty.html", msg="Invalid batch or branch.", facul_id=fac_id, cctv_enabled=bool(os.environ.get("CCTV_RTSP_URL")))
         try:
             datetime.strptime(date_value, "%Y-%m-%d")

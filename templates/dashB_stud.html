@@ -132,39 +132,13 @@
         {% endif %}
         
         <h2>View Attendance</h2>
-        <form action="/studentDashboard" method="POST">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="roll" placeholder="Roll Number" required>
-            <select name="branch" id="branch" required>
-                <option value="">-- Select Branch --</option>
-                <option value="ce">CE</option>
-                <option value="it">IT</option>
-                <option value="me">ME</option>
-                <option value="ec">EC</option>
-                <option value="ee">EE</option>
-            </select>
-            <select name="year" id="year" required>
-                <option value="">-- Select Year --</option>
-                <option value="1">1st Year</option>
-                <option value="2">2nd Year</option>
-                <option value="3">3rd Year</option>
-                <option value="4">4th Year</option>
-            </select>
-            
-            <label for="subject"><b></b></label>
-            <select name="subject" id="subject" required>
-                <option value="">-- Select Subject --</option>
-            </select>
-            
-            </select>
-            <input type="date" name="from" required>
-            <input type="date" name="to" required>
-            <button type="submit" class="btn-submit">View</button>
-        </form>
+        <p>Your attendance is linked to your signed-in student account.</p>
+        <a class="btn-submit" href="{{ url_for('student_view_attendance') }}">View My Attendance</a>
+
     </div>
 
     <div id="container" class="wrap"></div>
-        <script src="{{ url_for('static', filename='js/attendance_subjects.js') }}"></script>
+    
     <script>
       document.addEventListener("DOMContentLoaded", function () {
         const branch = document.getElementById("branch");

@@ -5,7 +5,7 @@ import secrets
 
 from flask import Flask, redirect, session, url_for
 
-from database import close_db
+from database import close_db, conn
 from services.security import register_security
 from routes.auth import bp as auth_bp
 from routes.admin import bp as admin_bp

@@ -249,6 +249,21 @@ def recognize_attendance(root, video_path, branch, batch, max_duration_seconds=N
         cap.release()
         return None
 
+    # Reject uploaded videos whose media duration exceeds the configured limit.
+    # The wall-clock guard below remains useful for slow files and live streams.
+    if not is_live_source and max_duration_seconds is not None:
+        media_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
+        frame_count = float(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if np.isfinite(media_fps) and media_fps > 0 and np.isfinite(frame_count) and frame_count > 0:
+            media_duration = frame_count / media_fps
+            if media_duration > max_duration_seconds:
+                logging.warning(
+                    "Uploaded video duration %.1f seconds exceeds configured limit %s seconds",
+                    media_duration, max_duration_seconds,
+                )
+                cap.release()
+                return None
+
     try:
         detector = _face_cascade()
     except Exception:

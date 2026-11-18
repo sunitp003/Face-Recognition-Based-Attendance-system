@@ -70,6 +70,21 @@ def process_image(image_path, detector=None):
     return cv2.equalizeHist(face)
 
 
+def count_usable_unique_images(student_dir):
+    """Count distinct, usable single-face images for enrollment validation."""
+    if not os.path.isdir(student_dir):
+        return 0
+    detector = _detector()
+    seen_hashes = set()
+    for filename in sorted(os.listdir(student_dir)):
+        if not filename.lower().endswith(SUPPORTED_IMAGES):
+            continue
+        face = process_image(os.path.join(student_dir, filename), detector)
+        if face is not None:
+            seen_hashes.add(hashlib.sha256(face.tobytes()).hexdigest())
+    return len(seen_hashes)
+
+
 def getImagesAndLabels(path):
     """Return balanced face arrays, numeric labels and label-to-roll mapping."""
     if not os.path.isdir(path):

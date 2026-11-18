@@ -24,6 +24,7 @@ from database import conn
 from services.security import role_required
 from services.pending_attendance import _clear_pending_attendance, _load_pending_attendance, _store_pending_attendance
 from services.file_storage import unzip_file
+from services.model_training import count_usable_unique_images
 
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 bp = Blueprint("student", __name__)
@@ -60,12 +61,12 @@ def studentReg():
         zip_src = os.path.join(zip_dir, uuid.uuid4().hex + ".zip")
         zip_file.save(zip_src)
         try:
-            extracted_folder = unzip_file(zip_src, target, roll_id)
+            extracted_folder = unzip_file(zip_src, target, roll_id, validator=lambda folder: count_usable_unique_images(folder) >= 5)
         finally:
             if os.path.exists(zip_src):
                 os.remove(zip_src)
         if not extracted_folder:
-            return render_template("registration.html", msg="ZIP rejected. Upload 1–30 non-empty JPG/JPEG/PNG images, each no larger than 8 MB and 40 MB total uncompressed.")
+            return render_template("registration.html", msg="ZIP rejected. Upload at least five distinct, clear images containing exactly one detectable face each (maximum 30 JPG/JPEG/PNG images, 8 MB per image and 40 MB total). Your previous accepted samples are kept if validation fails.")
         cursor.execute(
             "UPDATE student_login SET branch=%s, batch=%s WHERE roll_no=%s",
             (branch, batch, roll_id)

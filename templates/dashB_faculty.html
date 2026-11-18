@@ -98,7 +98,7 @@
     <div class="navbar">
         <a href="/faculty/view_attendance">View Attendance</a>
         <a href="/faculty/edit_attendance">Edit Attendance</a>
-        <a href="{{ url_for('logout') }}">Logout</a>  <!-- ✅ Logout Button Added -->
+        <form action="{{ url_for('logout') }}" method="POST" style="display:inline"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" style="background:none;border:0;color:white;font-size:18px;cursor:pointer">Logout</button></form>  <!-- ✅ Logout Button Added -->
 
         
         

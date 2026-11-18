@@ -4,7 +4,7 @@ A Flask + MySQL attendance application using **OpenCV Haar Cascade face detectio
 
 ## Recognition and attendance workflow
 
-1. Each student uploads a ZIP containing 10–20 clear, varied photos (up to 30 JPG/JPEG/PNG files; 40 MB uncompressed total). Images are extracted to `uploads/<batch>/<branch>/<roll_no>/`.
+1. Each student uploads a ZIP containing 10–20 clear, varied photos (5–30 usable JPG/JPEG/PNG files; 40 MB uncompressed total). Images are extracted to `uploads/<batch>/<branch>/<roll_no>/`.
 2. Admin trains the model for the exact batch and branch. The optional legacy `dataset_prepare.py` helper writes to `dataset/` and is not part of this active training path.
 3. Training accepts only images containing exactly one detectable face, rejects blurry or badly lit images, removes exact duplicate face crops, requires at least five usable images per student, and caps each student's training set to 30 images.
 4. The model is saved as `models/<batch>/<branch>/trainer.yml`; `labels.json` stores the exact model-label-to-roll-number mapping. Keep these files together.
@@ -14,6 +14,8 @@ A Flask + MySQL attendance application using **OpenCV Haar Cascade face detectio
 
 ## Setup
 
+For the exact Windows college-demo sequence, see SUBMISSION_RUNBOOK.md.
+
 Use Python 3.10 or 3.11 and MySQL 8.x.
 
 ```bash
@@ -21,6 +23,7 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+Copy .env.example to .env and edit the database credentials and secret before running.
 ```
 
 Create the database using `database_creation.sql` on a **new or backed-up database**. The schema script is intended to create tables and triggers only; create an administrator account with your own credentials after setup. Never run destructive SQL against a database containing real attendance records.
@@ -72,7 +75,7 @@ The hardened branch adds the following safeguards:
 - A request-scoped MySQL connection is opened only when a request needs the database and closed during Flask teardown. Do not share a connection between worker threads.
 - Every POST form carries a session-bound CSRF token. Keep the session secret stable across restarts and all application workers.
 - Production startup refuses to run without `SECRET_KEY`. Set `APP_ENV=production`, `SECRET_KEY` and `COOKIE_SECURE=1` behind HTTPS.
-- Uploaded MP4 files are checked for an MP4 file-type marker, limited to 50 MB and bounded processing duration, then removed after recognition processing. Photo uploads are limited to 30 images and 50 MB total. Student ZIPs are limited to 30 image files and 40 MB uncompressed; an oversized archive is rejected in full rather than partially imported. CCTV is an optional server-configured, bounded RTSP source. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
+- Uploaded MP4 files are checked for an MP4 file-type marker, limited to 50 MB and bounded processing duration, then removed after recognition processing. Photo uploads are limited to 30 images and 50 MB total. Student ZIPs are limited to 30 image files and 40 MB uncompressed; at least five distinct usable single-face images are required and validation occurs in staging before previously accepted samples are replaced. CCTV is an optional server-configured, bounded RTSP source. Image ZIPs are extracted into a staging directory and replace old samples only after extraction succeeds.
 - Pending faculty reviews are stored server-side rather than in the browser cookie and expire after two hours. All workers must share the same persistent application filesystem for this temporary storage.
 - Excel downloads are generated in memory to avoid concurrent requests overwriting one shared filename.
 - Admin deletion is blocked when a student or faculty member has historical attendance, preventing accidental cascade deletion of academic records.
@@ -83,12 +86,14 @@ The hardened branch adds the following safeguards:
 ### Important deployment steps after upgrading
 
 1. Back up the MySQL database, student image datasets, and current models before deploying.
-2. For an existing database, run `migrations/002_password_hashes.sql` exactly once. Fresh databases created with the updated `database_creation.sql` do not need this migration.
-3. Set a persistent `SECRET_KEY` and database credentials through environment variables. Never use the Flask development server in production.
+2. For an existing database, run `migrations/001_attendance_summary_update_trigger.sql` and `migrations/002_password_hashes.sql` exactly once each if the trigger/columns are missing. Fresh databases created with the updated `database_creation.sql` already contain both attendance triggers and password hash columns; inspect the schema before applying migrations.
+3. Set a persistent `SECRET_KEY` and database credentials through environment variables. Create a dedicated least-privilege MySQL account (do not use `root`). For a local college demonstration, start with `python app.py` only on a trusted local network. For production install requirements and run `gunicorn --workers 2 --threads 4 --timeout 120 app:app` behind an HTTPS reverse proxy; set `APP_ENV=production`, `COOKIE_SECURE=1`, a strong `SECRET_KEY`, and a non-root DB account. The included `Procfile` is an example, not a complete hosting configuration.
 4. Retrain **every batch/branch** after deploying this version. A model must have a matching `manifest.json`; legacy models without a manifest are intentionally rejected until retrained.
 5. Run the application over HTTPS and set `COOKIE_SECURE=1`.
 6. Run the regression suite with `python -m unittest discover -s tests -v`.
-7. Test using held-out classroom videos and manually compare false accepts, false rejects, and missed detections before real attendance use.
+7. Server-side branch/year/subject validation is enforced independently of browser dropdowns. Keep `services/attendance_catalogue.py` aligned with `static/js/attendance_subjects.js`.
+8. Logout and attendance-review cancellation are POST-only and protected by CSRF. Update any custom integrations to submit CSRF-protected POST forms.
+9. Test using held-out classroom videos and manually compare false accepts, false rejects, and missed detections before real attendance use.
 
 ### Account migration requirement
 

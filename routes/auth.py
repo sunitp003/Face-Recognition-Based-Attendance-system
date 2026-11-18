@@ -195,7 +195,7 @@ def change_password():
         return redirect(url_for("admin"))
     return render_template("change_password.html")
 
-@bp.route("/logout")
+@bp.route("/logout", methods=["POST"])
 def logout():
     _clear_pending_attendance()
     session.clear()
